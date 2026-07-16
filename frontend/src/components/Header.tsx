@@ -1,24 +1,28 @@
 'use client';
 import Link from 'next/link';
 import { useWallet } from '@/store/useWallet';
-import { Shield, Wallet } from 'lucide-react';
+import { Wallet } from 'lucide-react';
 
 export default function Header() {
-  const { address, connect, disconnect, isConnecting } = useWallet();
+  const { address, isConnected, connect, disconnect, isConnecting } = useWallet();
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-white/10 bg-black/50 backdrop-blur-md">
-      <div className="container mx-auto flex h-16 items-center justify-between px-4">
-        <Link href="/" className="flex items-center gap-2 transition-opacity hover:opacity-80">
-          <Shield className="h-8 w-8 text-blue-500" />
-          <span className="text-xl font-bold tracking-tight text-white">TrustVerse</span>
-        </Link>
-        
-        <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-gray-300">
-          <Link href="/issuer" className="hover:text-white transition-colors">Issuer Portal</Link>
-          <Link href="/wallet" className="hover:text-white transition-colors">Holder Wallet</Link>
-          <Link href="/verifier" className="hover:text-white transition-colors">Verifier Dashboard</Link>
-        </nav>
+      <div className="container mx-auto px-4 h-16 flex items-center justify-between">
+        <div className="flex items-center gap-6">
+          <Link href="/" className="flex items-center gap-2">
+            <div className="h-8 w-8 rounded bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+              <span className="text-white font-bold text-lg">T</span>
+            </div>
+            <span className="font-bold text-xl tracking-tight text-white hidden sm:block">TrustVerse</span>
+          </Link>
+          
+          <nav className="hidden md:flex gap-4 text-sm font-medium">
+            <Link href="/issuer" className="text-gray-400 hover:text-white transition-colors">Issuer Portal</Link>
+            <Link href="/wallet" className="text-gray-400 hover:text-white transition-colors">Holder Wallet</Link>
+            <Link href="/verifier" className="text-gray-400 hover:text-white transition-colors">Verifier Dashboard</Link>
+          </nav>
+        </div>
 
         <div className="flex items-center gap-4">
           {address ? (
