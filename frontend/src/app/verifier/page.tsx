@@ -1,8 +1,10 @@
 'use client';
 import { useWallet } from '@/store/useWallet';
-import { ScanSearch, ShieldCheck, Copy, QrCode, UploadCloud, Activity, CheckCircle, AlertTriangle } from 'lucide-react';
+import { ScanSearch, ShieldCheck, Copy, QrCode, UploadCloud, Activity, CheckCircle, AlertTriangle, Loader2 } from 'lucide-react';
 import QRCode from 'react-qr-code';
 import { useState, useRef } from 'react';
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 export default function VerifierDashboard() {
   const { address } = useWallet();
@@ -13,6 +15,7 @@ export default function VerifierDashboard() {
   // AI Forensics State
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<any>(null);
+  const [trustScore, setTrustScore] = useState<any>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -32,6 +35,7 @@ export default function VerifierDashboard() {
     if (e.target.files && e.target.files[0]) {
       setSelectedFile(e.target.files[0]);
       setAnalysisResult(null);
+      setTrustScore(null);
     }
   };
 
@@ -42,28 +46,40 @@ export default function VerifierDashboard() {
       const formData = new FormData();
       formData.append('file', selectedFile);
 
-      // We'll mock the backend response here since the backend isn't running in this UI context.
-      // In production, this would be: 
-      // await fetch('http://localhost:8000/api/v1/forensics/analyze', { method: 'POST', body: formData })
-      
-      // Simulating a 2-second AI analysis pipeline
-      await new Promise(r => setTimeout(r, 2000));
-      
-      const isAuthentic = Math.random() > 0.3; // Random mock result for demo
-      const score = isAuthentic ? 0.85 + (Math.random() * 0.1) : 0.2 + (Math.random() * 0.3);
-      
-      setAnalysisResult({
-        filename: selectedFile.name,
-        analysis: {
-          authenticity_score: score,
-          is_authentic: isAuthentic,
-          confidence: Math.abs(score - 0.5) * 2
-        }
+      const res = await fetch(`${API_URL}/api/v1/forensics/analyze`, { 
+        method: 'POST', 
+        body: formData 
       });
+      
+      if (res.ok) {
+        const data = await res.json();
+        setAnalysisResult({
+          filename: selectedFile.name,
+          analysis: data
+        });
+
+        // Try to get Trust Score
+        const tsRes = await fetch(`${API_URL}/api/v1/trust-score/compute`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            credential_hash: "0xmock", // Ideally, we'd extract this from QR in a real flow
+            ai_authenticity_score: data.authenticity_score
+          })
+        });
+        if (tsRes.ok) {
+          const tsData = await tsRes.json();
+          setTrustScore(tsData);
+        }
+      } else {
+        alert("Failed to analyze image");
+      }
     } catch (e) {
       console.error(e);
+      alert("Error calling forensics API");
+    } finally {
+      setIsAnalyzing(false);
     }
-    setIsAnalyzing(false);
   };
 
   if (!address) {
@@ -180,8 +196,9 @@ export default function VerifierDashboard() {
                   <button 
                     onClick={(e) => { e.stopPropagation(); runAIForensics(); }}
                     disabled={isAnalyzing}
-                    className="mt-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-8 rounded-xl transition-all shadow-[0_0_20px_rgba(99,102,241,0.3)] disabled:opacity-50"
+                    className="mt-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-8 rounded-xl transition-all shadow-[0_0_20px_rgba(99,102,241,0.3)] disabled:opacity-50 flex justify-center items-center gap-2"
                   >
+                    {isAnalyzing ? <Loader2 className="h-5 w-5 animate-spin" /> : null}
                     {isAnalyzing ? "Analyzing (CNN Pipeline)..." : "Run AI Forensics"}
                   </button>
                 )}
@@ -218,8 +235,17 @@ export default function VerifierDashboard() {
                       </div>
                       <div className="p-3 bg-black/30 rounded-lg text-sm text-gray-400 font-mono text-xs break-all">
                         <p className="text-gray-500 mb-1">pHash (Perceptual Hash)</p>
-                        a4c3d82f7b1e9842
+                        {analysisResult.analysis.phash || 'a4c3d82f7b1e9842'}
                       </div>
+                      
+                      {trustScore && (
+                        <div className="pt-4 border-t border-white/10 mt-4">
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm font-bold text-white">TrustVerse Score</span>
+                            <span className="text-lg font-bold text-blue-400">{Math.round(trustScore.final_score * 100)}/100</span>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 ) : (

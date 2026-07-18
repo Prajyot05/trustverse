@@ -1,19 +1,41 @@
 'use client';
 import { useWallet } from '@/store/useWallet';
-import { FileBadge, Fingerprint, Lock, ShieldCheck, X, Key } from 'lucide-react';
+import { FileBadge, Fingerprint, Lock, ShieldCheck, X, Key, Loader2 } from 'lucide-react';
 import QRCode from 'react-qr-code';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import * as snarkjs from 'snarkjs';
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 export default function WalletPage() {
   const { address, disconnect } = useWallet();
   const [showProofModal, setShowProofModal] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [proofResult, setProofResult] = useState<any>(null);
+  const [credentials, setCredentials] = useState<any[]>([]);
+
+  const fetchCredentials = async () => {
+    if (!address) return;
+    try {
+      const res = await fetch(`${API_URL}/api/v1/credentials/holder/did:ethr:${address}`);
+      if (res.ok) {
+        const data = await res.json();
+        setCredentials(data);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  useEffect(() => {
+    fetchCredentials();
+  }, [address]);
 
   const handleGenerateProof = async () => {
     setIsGenerating(true);
     try {
+      // In a real scenario, this would use the actual credential values and salt
       const input = {
         poseidonCommitment: "123456789", // Mock hash
         threshold: 300,                  // e.g., 3.00 CGPA
@@ -31,8 +53,36 @@ export default function WalletPage() {
       setProofResult({ proof, publicSignals });
     } catch (e) {
       console.error(e);
+      alert("Failed to generate ZK proof. Check circuit files.");
     }
     setIsGenerating(false);
+  };
+
+  const handleSubmitProof = async () => {
+    if (!proofResult) return;
+    setIsSubmitting(true);
+    try {
+      const res = await fetch(`${API_URL}/api/v1/verify/proof`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          credential_hash: credentials[0]?.hash || "0xmock",
+          proof: proofResult.proof,
+          public_signals: proofResult.publicSignals
+        })
+      });
+      if (res.ok) {
+        alert("Proof verified successfully!");
+        setShowProofModal(false);
+        setProofResult(null);
+      } else {
+        alert("Proof verification failed.");
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   if (!address) {
@@ -69,10 +119,12 @@ export default function WalletPage() {
                 <h3 className="text-white font-bold mb-2">Proof Generated Successfully!</h3>
                 <p className="text-sm text-gray-400 mb-4">Your underlying data was not exposed.</p>
                 <button 
-                  onClick={() => setShowProofModal(false)}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-6 rounded-xl w-full"
+                  onClick={handleSubmitProof}
+                  disabled={isSubmitting}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-6 rounded-xl w-full flex justify-center items-center gap-2"
                 >
-                  Submit Proof to Verifier
+                  {isSubmitting ? <Loader2 className="h-5 w-5 animate-spin" /> : null}
+                  {isSubmitting ? 'Submitting...' : 'Submit Proof to Verifier'}
                 </button>
               </div>
             ) : (
@@ -87,8 +139,9 @@ export default function WalletPage() {
                 <button 
                   onClick={handleGenerateProof}
                   disabled={isGenerating}
-                  className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl shadow-[0_0_20px_rgba(59,130,246,0.3)] disabled:opacity-50 transition-all"
+                  className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl shadow-[0_0_20px_rgba(59,130,246,0.3)] disabled:opacity-50 transition-all flex justify-center items-center gap-2"
                 >
+                  {isGenerating ? <Loader2 className="h-5 w-5 animate-spin" /> : null}
                   {isGenerating ? 'Generating ZK Proof...' : 'Generate Zero-Knowledge Proof'}
                 </button>
               </div>
@@ -135,10 +188,39 @@ export default function WalletPage() {
         {/* Main Content */}
         <div className="flex-1 glass-panel p-8 rounded-3xl w-full min-h-[400px]">
           <h2 className="text-2xl font-bold text-white mb-6">Your Credentials</h2>
-          <div className="flex flex-col items-center justify-center py-12 text-center gap-4">
-            <FileBadge className="h-12 w-12 text-gray-600" />
-            <p className="text-gray-400">No credentials received yet.</p>
-          </div>
+          {credentials.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {credentials.map((cred, i) => (
+                <div key={i} className="bg-gradient-to-br from-indigo-900/40 to-blue-900/40 border border-indigo-500/30 p-6 rounded-2xl relative overflow-hidden">
+                  <div className="absolute top-0 right-0 p-4">
+                    <ShieldCheck className="h-6 w-6 text-indigo-400/50" />
+                  </div>
+                  <h3 className="text-lg font-bold text-white mb-1">Academic Degree</h3>
+                  <p className="text-xs text-indigo-300 mb-4">{cred.issuer_did}</p>
+                  
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-400">Status</span>
+                      <span className={`font-medium ${cred.status === 'Active' ? 'text-green-400' : 'text-red-400'}`}>{cred.status}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-400">Date</span>
+                      <span className="text-white">{new Date(cred.anchored_at).toLocaleDateString()}</span>
+                    </div>
+                  </div>
+                  
+                  <div className="mt-4 pt-4 border-t border-white/10">
+                    <p className="text-xs text-gray-500 font-mono truncate">{cred.hash}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-12 text-center gap-4">
+              <FileBadge className="h-12 w-12 text-gray-600" />
+              <p className="text-gray-400">No credentials received yet.</p>
+            </div>
+          )}
         </div>
       </div>
     </div>

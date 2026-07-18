@@ -21,6 +21,7 @@ export default function Header() {
             <Link href="/issuer" className="text-gray-400 hover:text-white transition-colors">Issuer Portal</Link>
             <Link href="/wallet" className="text-gray-400 hover:text-white transition-colors">Holder Wallet</Link>
             <Link href="/verifier" className="text-gray-400 hover:text-white transition-colors">Verifier Dashboard</Link>
+            <Link href="/verify" className="text-blue-400 hover:text-blue-300 transition-colors font-bold ml-2">Verify Credential</Link>
           </nav>
         </div>
 

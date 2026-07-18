@@ -1,11 +1,79 @@
 'use client';
 import { useWallet } from '@/store/useWallet';
-import { FileBadge, Plus, Upload, CheckCircle2 } from 'lucide-react';
-import { useState } from 'react';
+import { FileBadge, Plus, CheckCircle2, Loader2 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 export default function IssuerPortal() {
   const { address } = useWallet();
   const [activeTab, setActiveTab] = useState<'dashboard' | 'issue'>('dashboard');
+  const [isIssuing, setIsIssuing] = useState(false);
+  const [credentials, setCredentials] = useState<any[]>([]);
+  
+  const [formData, setFormData] = useState({
+    holderDid: '',
+    degreeName: '',
+    graduationDate: '',
+    cgpa: ''
+  });
+
+  const fetchCredentials = async () => {
+    if (!address) return;
+    try {
+      const res = await fetch(`${API_URL}/api/v1/credentials/issuer/did:ethr:${address}`);
+      if (res.ok) {
+        const data = await res.json();
+        setCredentials(data);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  useEffect(() => {
+    fetchCredentials();
+  }, [address]);
+
+  const handleIssue = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!address) return;
+    setIsIssuing(true);
+    
+    try {
+      const res = await fetch(`${API_URL}/api/v1/credentials/issue`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          issuer_did: `did:ethr:${address}`,
+          holder_did: formData.holderDid,
+          schema_id: 'degree',
+          credential_subject: {
+            degree: formData.degreeName,
+            date: formData.graduationDate,
+            cgpa: parseFloat(formData.cgpa)
+          },
+          issuer_private_key: 'mock_pk', // For demo
+          holder_shared_key_hex: '00'.repeat(32) // For demo
+        })
+      });
+      
+      if (res.ok) {
+        alert("Credential issued successfully!");
+        setFormData({ holderDid: '', degreeName: '', graduationDate: '', cgpa: '' });
+        setActiveTab('dashboard');
+        fetchCredentials();
+      } else {
+        const err = await res.json();
+        alert(`Failed: ${err.detail || 'Unknown error'}`);
+      }
+    } catch (e) {
+      console.error(e);
+      alert("Network error");
+    } finally {
+      setIsIssuing(false);
+    }
+  };
 
   if (!address) {
     return (
@@ -68,7 +136,7 @@ export default function IssuerPortal() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="glass-panel p-6 rounded-3xl">
                   <p className="text-gray-400 text-sm">Total Issued</p>
-                  <p className="text-3xl font-bold text-white mt-2">0</p>
+                  <p className="text-3xl font-bold text-white mt-2">{credentials.length}</p>
                 </div>
                 <div className="glass-panel p-6 rounded-3xl">
                   <p className="text-gray-400 text-sm">Active Schemas</p>
@@ -76,27 +144,46 @@ export default function IssuerPortal() {
                 </div>
                 <div className="glass-panel p-6 rounded-3xl">
                   <p className="text-gray-400 text-sm">Revoked</p>
-                  <p className="text-3xl font-bold text-white mt-2">0</p>
+                  <p className="text-3xl font-bold text-white mt-2">{credentials.filter(c => c.status === 'Revoked').length}</p>
                 </div>
               </div>
               
               <div className="glass-panel p-8 rounded-3xl mt-4 min-h-[300px]">
                 <h3 className="text-lg font-bold text-white mb-6">Recent Issuances</h3>
-                <div className="flex flex-col items-center justify-center py-10 text-center gap-3">
-                  <FileBadge className="h-10 w-10 text-gray-600" />
-                  <p className="text-gray-400">No credentials issued yet.</p>
-                </div>
+                {credentials.length > 0 ? (
+                  <div className="flex flex-col gap-3">
+                    {credentials.map((cred, i) => (
+                      <div key={i} className="bg-white/5 border border-white/10 p-4 rounded-xl flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-white font-medium truncate w-64">{cred.hash}</p>
+                          <p className="text-xs text-gray-400 mt-1">To: {cred.holder_did}</p>
+                        </div>
+                        <div className={`px-2 py-1 rounded-md text-xs font-medium ${cred.status === 'Active' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+                          {cred.status}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-10 text-center gap-3">
+                    <FileBadge className="h-10 w-10 text-gray-600" />
+                    <p className="text-gray-400">No credentials issued yet.</p>
+                  </div>
+                )}
               </div>
             </div>
           ) : (
             <div className="glass-panel p-8 rounded-3xl">
               <h2 className="text-2xl font-bold text-white mb-6">Issue New Credential</h2>
               
-              <form className="flex flex-col gap-6">
+              <form onSubmit={handleIssue} className="flex flex-col gap-6">
                 <div className="flex flex-col gap-2">
                   <label className="text-sm font-medium text-gray-300">Holder DID</label>
                   <input 
                     type="text" 
+                    value={formData.holderDid}
+                    onChange={(e) => setFormData({...formData, holderDid: e.target.value})}
+                    required
                     placeholder="did:ethr:0x..." 
                     className="bg-black/50 border border-gray-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all"
                   />
@@ -114,22 +201,23 @@ export default function IssuerPortal() {
                   
                   <div className="flex flex-col gap-2">
                     <label className="text-xs text-gray-400">Degree Name</label>
-                    <input type="text" className="bg-black/50 border border-gray-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500" placeholder="e.g. Bachelor of Computer Science" />
+                    <input type="text" value={formData.degreeName} onChange={(e) => setFormData({...formData, degreeName: e.target.value})} required className="bg-black/50 border border-gray-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500" placeholder="e.g. Bachelor of Computer Science" />
                   </div>
                   
                   <div className="flex flex-col gap-2">
                     <label className="text-xs text-gray-400">Graduation Date</label>
-                    <input type="date" className="bg-black/50 border border-gray-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500 w-[color-scheme:dark]" />
+                    <input type="date" value={formData.graduationDate} onChange={(e) => setFormData({...formData, graduationDate: e.target.value})} required className="bg-black/50 border border-gray-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500 w-[color-scheme:dark]" />
                   </div>
 
                   <div className="flex flex-col gap-2">
                     <label className="text-xs text-gray-400">CGPA</label>
-                    <input type="number" step="0.01" className="bg-black/50 border border-gray-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500" placeholder="e.g. 3.8" />
+                    <input type="number" value={formData.cgpa} onChange={(e) => setFormData({...formData, cgpa: e.target.value})} step="0.01" required className="bg-black/50 border border-gray-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500" placeholder="e.g. 3.8" />
                   </div>
                 </div>
 
-                <button type="button" className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-xl mt-4 transition-colors shadow-[0_0_20px_rgba(79,70,229,0.3)]">
-                  Sign & Issue Credential
+                <button type="submit" disabled={isIssuing} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-xl mt-4 transition-colors shadow-[0_0_20px_rgba(79,70,229,0.3)] disabled:opacity-50 flex items-center justify-center gap-2">
+                  {isIssuing ? <Loader2 className="h-5 w-5 animate-spin" /> : null}
+                  {isIssuing ? 'Issuing...' : 'Sign & Issue Credential'}
                 </button>
               </form>
             </div>
