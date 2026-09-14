@@ -18,6 +18,8 @@ frontend/.next/
 frontend/out/
 frontend/build/
 frontend/coverage/
+frontend/tsconfig.tsbuildinfo
+*.tsbuildinfo
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
@@ -45,6 +47,8 @@ research/.pytest_cache/
 research/.mypy_cache/
 research/sdc-spike/venv/
 research/sdc-spike/data/*/*.tmp
+# Regenerated spike expansions (base templates/distortions/tampered stay tracked)
+research/sdc-spike/data/extra_*/
 
 # Contracts (Hardhat & Node)
 contracts/node_modules/

@@ -1,36 +1,87 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# TrustVerse Frontend
 
-## Getting Started
+Next.js 16 App Router UI for TrustVerse — zero-knowledge credential infrastructure with on-chain anchoring and AI forensics.
 
-First, run the development server:
+## Stack
+
+- **Next.js 16** / React 19 / TypeScript
+- **Tailwind CSS v4** (CSS-first config in `src/app/globals.css`)
+- **shadcn/ui** (Radix Nova style, CSS variables)
+- **next-themes** (dark / light / system)
+- **sonner** toasts, **lucide-react** icons
+- **ethers** v6 + **snarkjs** for wallet + ZK proving
+- **Zustand** wallet store (`src/store/useWallet.ts`)
+
+## Getting started
 
 ```bash
+# from repo root (preferred — starts backend + frontend)
+./scripts/dev.sh
+
+# or frontend only
+cd frontend
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000). Contract addresses and API URL come from `frontend/.env.local` (`NEXT_PUBLIC_*`).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Design system (“Digital Trust”)
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Tokens live in [`src/app/globals.css`](src/app/globals.css):
 
-## Learn More
+| Token group | Role |
+|---|---|
+| `--background` / `--foreground` / `--card` / `--muted` / `--border` | Cool-tinted neutrals (never pure `#000`) |
+| `--primary` | Single “Trust Blue” accent for actions, links, focus |
+| `--success` / `--warning` / `--destructive` | Semantic status only |
+| `--font-sans` (Geist) / `--font-mono` (Geist Mono) | UI vs hashes / DIDs / addresses |
 
-To learn more about Next.js, take a look at the following resources:
+Themes: `:root` (light) and `.dark`. Toggle via `ThemeToggle` (`next-themes`, class strategy).
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### Component folders
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```
+src/components/
+  ui/            # shadcn primitives (button, card, tabs, dialog, …)
+  brand/         # Logo
+  layout/        # SiteHeader, SiteFooter, AppShell, ThemeToggle, WalletMenu, PageHeader
+  data/          # HashChip, DataField, StatusBadge, QRPanel, StatCard
+  feedback/      # EmptyState, ConfirmDialog
+  credentials/   # CredentialCard
+  proof/         # ProofStepper
+  forensics/     # TrustScoreRing, ScoreBreakdown
+  wallet/        # WalletGate
+  marketing/     # Landing-only sections (ProofTrace, DemoRunner, …)
+```
 
-## Deploy on Vercel
+Domain components are presentational. Fetch / contract / snarkjs logic stays in route pages and `src/lib/contracts.ts`.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### Adding a shadcn component
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+cd frontend
+npx shadcn@latest add <component>
+```
+
+Config: [`components.json`](components.json). Aliases: `@/components`, `@/components/ui`, `@/lib/utils`.
+
+## Routes
+
+| Path | Shell | Purpose |
+|---|---|---|
+| `/` | Marketing (`SiteHeader` + `SiteFooter`) | Product landing |
+| `/issuer` | App shell | Register issuer, issue & revoke credentials |
+| `/wallet` | App shell | Holder credentials + ZK proof responses |
+| `/verifier` | App shell | ZK requests + AI forensics |
+| `/verify` | App shell | Public credential hash lookup |
+
+Route groups: `src/app/(marketing)/` and `src/app/(app)/` — URLs unchanged.
+
+## Scripts
+
+```bash
+npm run dev      # next dev
+npm run build    # production build
+npm run lint     # eslint
+```

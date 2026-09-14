@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { BrowserProvider, Signer } from 'ethers';
+import { toast } from 'sonner';
 
 interface WalletState {
   address: string | null;
@@ -26,7 +27,9 @@ export const useWallet = create<WalletState>((set) => ({
         
         set({ address, signer, provider, isConnecting: false });
       } else {
-        alert("Please install MetaMask!");
+        toast.error("MetaMask not found", {
+          description: "Install the MetaMask extension to connect a wallet.",
+        });
         set({ isConnecting: false });
       }
     } catch (err) {

@@ -33,7 +33,13 @@ export function toBytes32(hexOrHash: string): string {
   return '0x' + h.padStart(64, '0');
 }
 
-export function groth16ToSolidity(proof: any, publicSignals: string[]) {
+export interface Groth16Proof {
+  pi_a: [string, string, string];
+  pi_b: [[string, string], [string, string], [string, string]];
+  pi_c: [string, string, string];
+}
+
+export function groth16ToSolidity(proof: Groth16Proof, publicSignals: string[]) {
   return {
     pA: [proof.pi_a[0], proof.pi_a[1]],
     pB: [
