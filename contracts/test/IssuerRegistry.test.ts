@@ -36,6 +36,13 @@ describe("IssuerRegistry", function () {
         registry.registerIssuer("did:ethr:123", addr2.address, "QmHash2")
       ).to.be.revertedWith("Issuer already registered");
     });
+
+    it("Should allow a university to self-register", async function () {
+      await registry.connect(addr1).selfRegister("did:ethr:uni", "QmMeta");
+      const issuer = await registry.issuersByDID("did:ethr:uni");
+      expect(issuer.walletAddress).to.equal(addr1.address);
+      expect(issuer.isActive).to.be.true;
+    });
   });
 
   describe("Suspension and Reactivation", function () {

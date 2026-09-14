@@ -29,7 +29,17 @@ contract IssuerRegistry is Ownable {
 
     constructor(address initialOwner) Ownable(initialOwner) {}
 
+    /// @notice University self-enrols: msg.sender becomes the issuing wallet for `_did`.
+    /// Owner-only `registerIssuer` remains for admin/demo seeding.
+    function selfRegister(string memory _did, string memory _metadataHash) external {
+        _register(_did, msg.sender, _metadataHash);
+    }
+
     function registerIssuer(string memory _did, address _walletAddress, string memory _metadataHash) external onlyOwner {
+        _register(_did, _walletAddress, _metadataHash);
+    }
+
+    function _register(string memory _did, address _walletAddress, string memory _metadataHash) internal {
         require(bytes(issuersByDID[_did].did).length == 0, "Issuer already registered");
         require(bytes(addressToDID[_walletAddress]).length == 0, "Address already registered to an issuer");
         require(bytes(_did).length > 0, "DID cannot be empty");
