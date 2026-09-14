@@ -4,7 +4,7 @@ import { useWallet } from '@/store/useWallet';
 import { Wallet } from 'lucide-react';
 
 export default function Header() {
-  const { address, isConnected, connect, disconnect, isConnecting } = useWallet();
+  const { address, connect, disconnect, isConnecting } = useWallet();
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-white/10 bg-black/50 backdrop-blur-md">
