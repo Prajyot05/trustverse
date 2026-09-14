@@ -1,0 +1,10 @@
+{
+  "name": "trustverse-poseidon-sidecar",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Tiny CLI that computes Poseidon hashes with circomlibjs, so the FastAPI backend and the ClaimProver/NonRevocation/IssuerMembership circuits agree bit-for-bit on credential commitments.",
+  "main": "hash.js",
+  "dependencies": {
+    "circomlibjs": "^0.1.7"
+  }
+}

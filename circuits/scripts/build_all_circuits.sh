@@ -12,7 +12,9 @@ if [ ! -f "pot12_final.ptau" ]; then
     npx snarkjs powersoftau prepare phase2 pot12_0001.ptau pot12_final.ptau -v
 fi
 
-circuits=("ClaimProver" "IssuerMembership" "NonRevocation" "VisualBinder")
+# VisualBinder is a research spike (see research/sdc-spike/) and is
+# intentionally not part of the product circuit set - see docs/architecture.md.
+circuits=("ClaimProver" "IssuerMembership" "NonRevocation")
 
 for circuit in "${circuits[@]}"; do
     echo "----------------------------------------"

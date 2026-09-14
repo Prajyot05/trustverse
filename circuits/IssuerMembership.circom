@@ -45,10 +45,12 @@ template IssuerMembership(levels) {
     signal input issuerRegistryRoot;
 
     // Private Inputs
+    // claimsHash is taken as an opaque commitment here, same as in
+    // NonRevocation.circom - see ClaimProver.circom for how it is derived.
     signal input claimsHash;
-    signal input sdcHash;
     signal input issuerPubKey;
     signal input salt;
+    signal input schemaId;
 
     signal input pathElements[levels];
     signal input pathIndices[levels];
@@ -57,11 +59,12 @@ template IssuerMembership(levels) {
     signal output isValid;
 
     // 1. Verify credentialRoot
+    // credentialRoot = Poseidon(claimsHash, issuerPubKey, salt, schemaId)
     component rootHasher = Poseidon(4);
     rootHasher.inputs[0] <== claimsHash;
-    rootHasher.inputs[1] <== sdcHash;
-    rootHasher.inputs[2] <== issuerPubKey;
-    rootHasher.inputs[3] <== salt;
+    rootHasher.inputs[1] <== issuerPubKey;
+    rootHasher.inputs[2] <== salt;
+    rootHasher.inputs[3] <== schemaId;
 
     rootHasher.out === credentialRoot;
 

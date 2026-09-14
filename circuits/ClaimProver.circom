@@ -5,10 +5,19 @@ include "node_modules/circomlib/circuits/comparators.circom";
 
 /*
  * ClaimProver Circuit
- * Proves that:
- * 1. The private claims (subjectId, value) hash to `claimsHash`.
- * 2. Poseidon(claimsHash, sdcHash, issuerPubKey, salt) == credentialRoot
- * 3. The private value satisfies the threshold condition (value >= threshold).
+ *
+ * TrustVerse shared commitment layout (used by every circuit in this
+ * directory, and mirrored bit-for-bit by backend/app/core/poseidon.py):
+ *
+ *   claimsHash     = Poseidon(subjectId, cgpaScaled, degreeCode, issueDate)
+ *   credentialRoot = Poseidon(claimsHash, issuerPubKey, salt, schemaId)
+ *
+ * ClaimProver proves, without revealing subjectId, cgpaScaled, degreeCode,
+ * issueDate, issuerPubKey, salt or schemaId:
+ *   1. The private claim fields are consistent with the on-chain
+ *      credentialRoot anchored for this credential.
+ *   2. cgpaScaled >= threshold (the only claim value ever disclosed is the
+ *      public threshold chosen by the verifier, e.g. "CGPA >= 8.0").
  */
 template ClaimProver(nBits) {
     // Public Inputs
@@ -17,34 +26,37 @@ template ClaimProver(nBits) {
 
     // Private Inputs
     signal input subjectId;
-    signal input value;
-    signal input sdcHash;
+    signal input cgpaScaled;   // e.g. CGPA * 100, kept as an integer field element
+    signal input degreeCode;
+    signal input issueDate;    // unix timestamp / days-since-epoch, field element
     signal input issuerPubKey;
     signal input salt;
+    signal input schemaId;
 
     // Outputs
     signal output isValid;
 
-    // 1. Compute claimsHash
-    component claimsHasher = Poseidon(2);
+    // 1. Compute claimsHash from the individual claim fields
+    component claimsHasher = Poseidon(4);
     claimsHasher.inputs[0] <== subjectId;
-    claimsHasher.inputs[1] <== value;
-    
+    claimsHasher.inputs[1] <== cgpaScaled;
+    claimsHasher.inputs[2] <== degreeCode;
+    claimsHasher.inputs[3] <== issueDate;
+
     // 2. Verify credentialRoot
     component rootHasher = Poseidon(4);
     rootHasher.inputs[0] <== claimsHasher.out;
-    rootHasher.inputs[1] <== sdcHash;
-    rootHasher.inputs[2] <== issuerPubKey;
-    rootHasher.inputs[3] <== salt;
+    rootHasher.inputs[1] <== issuerPubKey;
+    rootHasher.inputs[2] <== salt;
+    rootHasher.inputs[3] <== schemaId;
 
     rootHasher.out === credentialRoot;
 
-    // 3. Verify Threshold (value >= threshold)
-    // GreaterEqThan component from circomlib
+    // 3. Verify Threshold (cgpaScaled >= threshold)
     component geq = GreaterEqThan(nBits);
-    geq.in[0] <== value;
+    geq.in[0] <== cgpaScaled;
     geq.in[1] <== threshold;
-    
+
     // Enforce that the condition must be met
     geq.out === 1;
 

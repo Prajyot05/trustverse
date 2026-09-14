@@ -26,6 +26,7 @@ pnpm-debug.log*
 # Backend (Python/FastAPI)
 backend/venv/
 backend/env/
+backend/poseidon_sidecar/node_modules/
 backend/**/__pycache__/
 backend/**/*.py[cod]
 backend/*$py.class

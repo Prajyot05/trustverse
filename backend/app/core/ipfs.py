@@ -32,12 +32,19 @@ class IPFSStorage:
                 "name": name
             }
 
-        response = requests.post(url, json=payload, headers=self.headers)
-        
-        # If credentials are mock/invalid, return a mock CID for dev testing
-        if response.status_code == 401 and self.api_key == "mock_key":
+        # No real Pinata credentials configured: skip the network call
+        # entirely (it would otherwise fail with a connection error rather
+        # than a clean 401 in offline/sandboxed dev environments) and hand
+        # back a deterministic local CID so the rest of the issuance flow
+        # can be exercised without an internet connection or API keys.
+        if self.api_key == "mock_key":
             return f"mock_cid_for_{name or 'json'}"
-            
+
+        try:
+            response = requests.post(url, json=payload, headers=self.headers, timeout=15)
+        except requests.exceptions.RequestException as exc:
+            raise RuntimeError(f"Failed to reach Pinata: {exc}") from exc
+
         response.raise_for_status()
         return response.json().get("IpfsHash")
 

@@ -71,15 +71,19 @@ fi
 ISSUER_REGISTRY=$(node -pe "require('$ADDR_FILE').issuerRegistry")
 CREDENTIAL_ANCHOR=$(node -pe "require('$ADDR_FILE').credentialAnchor")
 REVOCATION_REGISTRY=$(node -pe "require('$ADDR_FILE').revocationRegistry")
-GROTH16_VERIFIER=$(node -pe "require('$ADDR_FILE').groth16Verifier")
+CLAIM_PROVER_VERIFIER=$(node -pe "require('$ADDR_FILE').claimProverVerifier")
+NON_REVOCATION_VERIFIER=$(node -pe "require('$ADDR_FILE').nonRevocationVerifier")
+ISSUER_MEMBERSHIP_VERIFIER=$(node -pe "require('$ADDR_FILE').issuerMembershipVerifier")
 VERIFICATION_GATEWAY=$(node -pe "require('$ADDR_FILE').verificationGateway")
 
 echo "Deployed addresses:"
-echo "  IssuerRegistry:       $ISSUER_REGISTRY"
-echo "  CredentialAnchor:     $CREDENTIAL_ANCHOR"
-echo "  RevocationRegistry:   $REVOCATION_REGISTRY"
-echo "  Groth16Verifier:      $GROTH16_VERIFIER"
-echo "  VerificationGateway:  $VERIFICATION_GATEWAY"
+echo "  IssuerRegistry:            $ISSUER_REGISTRY"
+echo "  CredentialAnchor:          $CREDENTIAL_ANCHOR"
+echo "  RevocationRegistry:        $REVOCATION_REGISTRY"
+echo "  ClaimProverVerifier:       $CLAIM_PROVER_VERIFIER"
+echo "  NonRevocationVerifier:     $NON_REVOCATION_VERIFIER"
+echo "  IssuerMembershipVerifier:  $ISSUER_MEMBERSHIP_VERIFIER"
+echo "  VerificationGateway:       $VERIFICATION_GATEWAY"
 
 # ---------------------------------------------------------------------------
 # 2. Backend: venv, requirements, .env, run
@@ -97,16 +101,18 @@ if [ ! -f "$ENV_FILE" ]; then
 fi
 
 # Rewrite (or append) the contract address lines with the freshly deployed ones.
-python3 - "$ENV_FILE" "$ISSUER_REGISTRY" "$CREDENTIAL_ANCHOR" "$REVOCATION_REGISTRY" "$GROTH16_VERIFIER" "$VERIFICATION_GATEWAY" <<'PYEOF'
+python3 - "$ENV_FILE" "$ISSUER_REGISTRY" "$CREDENTIAL_ANCHOR" "$REVOCATION_REGISTRY" "$CLAIM_PROVER_VERIFIER" "$NON_REVOCATION_VERIFIER" "$ISSUER_MEMBERSHIP_VERIFIER" "$VERIFICATION_GATEWAY" <<'PYEOF'
 import sys
 
-env_file, issuer_registry, anchor, revocation, verifier, gateway = sys.argv[1:7]
+env_file, issuer_registry, anchor, revocation, claim_verifier, nonrev_verifier, issuer_verifier, gateway = sys.argv[1:9]
 updates = {
     "ETH_RPC_URL": "http://127.0.0.1:8545",
     "ISSUER_REGISTRY_ADDRESS": issuer_registry,
     "ANCHOR_CONTRACT_ADDRESS": anchor,
     "REVOCATION_CONTRACT_ADDRESS": revocation,
-    "GROTH16_VERIFIER_ADDRESS": verifier,
+    "CLAIM_PROVER_VERIFIER_ADDRESS": claim_verifier,
+    "NON_REVOCATION_VERIFIER_ADDRESS": nonrev_verifier,
+    "ISSUER_MEMBERSHIP_VERIFIER_ADDRESS": issuer_verifier,
     "VERIFICATION_GATEWAY_ADDRESS": gateway,
 }
 
