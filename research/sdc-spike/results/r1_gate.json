@@ -1,0 +1,19 @@
+{
+  "method": "binarized-region-hash (name+cgpa), OCR-text-hash analogue without Tesseract",
+  "n_distortions": 45,
+  "n_tampered": 9,
+  "threshold_hamming": 141,
+  "frr": 0.044444444444444446,
+  "far": 0.7777777777777778,
+  "dist_min_max": [
+    0,
+    146
+  ],
+  "tamp_min_max": [
+    122,
+    157
+  ],
+  "gate": "FAR < 10% at FRR < 5%",
+  "gate_pass": false,
+  "decision": "FAIL: report as negative result / future work"
+}
