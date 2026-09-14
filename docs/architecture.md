@@ -1,81 +1,99 @@
-# TrustVerse: Digital Trust Infrastructure
+# TrustVerse Architecture
 
-## Introduction
+TrustVerse verifies academic credentials with **privacy-preserving selective disclosure** (zk-SNARKs), **on-chain anchoring and revocation**, and an optional **ELA-CNN forensics** path for legacy scans.
 
-TrustVerse is an advanced Digital Trust Infrastructure that unifies decentralized identities (DIDs), Zero-Knowledge Proofs (ZKPs), and AI forensics into a single platform. It addresses the growing threat of sophisticated digital manipulation and AI-generated forgeries by anchoring trust immutably on a blockchain ledger.
+## Roles
 
-## Core Pillars
+| Role | Responsibility |
+|------|----------------|
+| Issuer (university) | Registers on-chain, issues encrypted W3C VCs, anchors Poseidon commitments |
+| Holder (student) | Decrypts credentials in wallet, generates ZK proofs for verifier requests |
+| Verifier (employer) | Creates threshold requests, verifies proofs on-chain, optional scan upload |
 
-1. **W3C Verifiable Credentials & DIDs**: Standards-compliant credentials signed mathematically by authorized issuers.
-2. **Zero-Knowledge Selective Disclosure**: Prove possession and attributes of credentials without exposing the actual data using `circom` and `snarkjs` (Groth16).
-3. **AI Forensics Pipeline**: Deepfake detection and document tampering analysis embedded natively into verification.
+## Commitment layout
 
----
+```
+claimsHash     = Poseidon(subjectId, cgpaScaled, degreeCode, issueDate)
+credentialRoot = Poseidon(claimsHash, issuerPubKey, salt, schemaId)
+```
 
-## Architecture Overview
+Backend and Circom circuits share the same Poseidon implementation via `backend/poseidon_sidecar/` (circomlibjs).
 
-The system architecture consists of a Next.js frontend (acting as Holder Wallet and Issuer/Verifier Portals), a FastAPI python backend (handling the heavy AI inference and credential issuance logic), and a Smart Contract layer on Ethereum (Hardhat).
-
-### High-Level Interaction Diagram
+## Canonical happy path
 
 ```mermaid
 sequenceDiagram
-    participant Issuer as Issuer Portal
-    participant API as FastAPI (Backend)
-    participant Blockchain as Smart Contracts
-    participant Holder as Holder Wallet
-    participant Verifier as Verifier Portal
+    participant Issuer
+    participant API as FastAPI
+    participant Chain as Ethereum
+    participant Holder
+    participant Verifier
 
-    Note over Issuer, API: Phase 1 & 2
-    Issuer->>API: Request Credential Issuance
-    API->>Blockchain: Anchor Credential Hash
-    API->>Issuer: Return Encrypted VC (AES-256-GCM)
-    Issuer->>Holder: Issue W3C VC
-
-    Note over Verifier, Holder: Phase 3
-    Verifier->>Holder: Request Proof (e.g. CGPA >= 3.0)
-    Holder->>Holder: ZK Circuit computes Proof (in-browser)
-    Holder->>Blockchain: Submit ZK Proof & Nullifier
-    Blockchain->>Blockchain: Validate Revocation & Proof
-    Blockchain->>Verifier: Verification Successful Event
-
-    Note over Verifier, API: Phase 4
-    Verifier->>API: Send Media for AI Forensics
-    API->>API: ELA Preprocessing
-    API->>API: PyTorch CNN Inference
-    API->>API: pHash Calculation
-    API->>Verifier: Return Trust Score & Authenticity Probability
+    Issuer->>API: Issue credential
+    API->>API: Poseidon root, AES-GCM encrypt, pin
+    Issuer->>Chain: anchor(credentialRoot)
+    Holder->>API: Fetch and decrypt credential
+    Verifier->>Holder: Request CGPA >= T, issuer X
+    API->>Holder: Current revocation Merkle root and path
+    Holder->>Holder: Groth16 proof (ClaimProver + NonRevocation)
+    Holder->>Chain: VerificationGateway.verify(proof)
+    Chain->>Verifier: Verified event
+    Verifier->>API: Optional scan upload
+    API->>Verifier: ELA heatmap, CNN score, TrustVerse Score
 ```
 
----
+## Components
 
-## Phase 4: AI Forensics Pipeline Theory
+### Frontend (Next.js)
 
-### 1. Error Level Analysis (ELA)
+- `/issuer` — register issuer, issue credential, MetaMask anchor, revoke
+- `/wallet` — decrypt credentials, pending verification requests, in-browser snarkjs proving
+- `/verifier` — create requests, QR deep link, poll results, upload scans
+- `/verify` — public anchor + revocation lookup by `credentialRoot`
 
-When an image is saved in a lossy format (like JPEG), compression artifacts are introduced. When an image is modified (tampered with) and re-saved, the modified sections undergo compression a different number of times than the original sections.
-Error Level Analysis highlights these discrepancies. 
+### Backend (FastAPI)
 
-By saving the image at a known quality (e.g., 90%) and subtracting it from the original, we can visualize areas that have different compression error levels. The CNN will use these ELA images as input because tampered regions "light up" prominently.
+- Credential issuance with real Poseidon commitments and per-holder encryption
+- Sparse Merkle revocation tree (20 levels), root published to `VerificationGateway`
+- Verification request CRUD and proof indexer (listens for on-chain events)
+- ELA + CNN forensics (`backend/app/core/ai_forensics.py`)
+- Demo seed: `/demo/seed` — university, two students, one revoked credential, pending request
 
-### 2. PyTorch CNN Architecture
+### Smart contracts (Hardhat)
 
-The Convolutional Neural Network (CNN) is designed to learn structural anomalies in ELA-processed images. 
-- **Input**: ELA-processed RGB images.
-- **Hidden Layers**: Sequential Conv2D layers with ReLU activation, MaxPooling, and Dropout for regularization.
-- **Output**: Binary classification (Authentic vs. Forged) or probability map.
+- `IssuerRegistry` — issuer DID ↔ wallet
+- `CredentialAnchor` — `credentialHash` → Poseidon commitment
+- `RevocationRegistry` — multi-sig revocation proposals
+- `VerificationGateway` — routes Groth16 verifiers, enforces anchor match and revocation tree root
+- `verifiers/` — ClaimProver, NonRevocation, IssuerMembership Groth16 verifiers
 
-```mermaid
-graph TD
-    A[Original Image] --> B[Generate ELA Image]
-    B --> C[CNN: Conv2D + ReLU + MaxPool]
-    C --> D[CNN: Conv2D + ReLU + MaxPool]
-    D --> E[Fully Connected Layer]
-    E --> F[Sigmoid Output: Authenticity Score]
+### Circuits (Circom)
+
+- **ClaimProver** — prove `cgpaScaled >= threshold` without revealing CGPA
+- **NonRevocation** — Merkle non-membership in revocation tree
+- **IssuerMembership** — issuer public key in registry tree (standalone verifier; not in gateway MVP)
+
+Visual binding (`VisualBinder`, SDC) lives under `research/sdc-spike/` and is **not** on the product path until R1 gate passes.
+
+## TrustVerse Score (legacy scans)
+
+When a verifier uploads a scan, the backend returns:
+
+1. On-chain anchor / issuer signals (if credential root known)
+2. Revocation status
+3. ELA heatmap + CNN forgery probability
+4. Weighted **TrustVerse Score** with components shown explicitly in the UI
+
+## Local development
+
+```bash
+./scripts/dev.sh
 ```
 
-### 3. Perceptual Hashing (pHash)
+Starts Hardhat, deploys contracts, writes addresses to `backend/.env` and `frontend/.env.local`, runs API on `:8000` and frontend on `:3000`.
 
-Unlike cryptographic hashes (SHA-256) which change entirely if a single bit changes, a perceptual hash computes a fingerprint of the image's visual features. 
-- **Use Case**: Used by the Verifier to check if this image (or a slightly cropped/resized version of it) has been previously flagged or verified.
-- **Mechanism**: Calculates the Discrete Cosine Transform (DCT) of the image, isolates the low frequencies, and compares values against the mean to generate a robust binary hash.
+Seed demo data: `POST http://localhost:8000/demo/seed`
+
+## Evaluation
+
+Reproducible metrics under `eval/` — see `eval/run_all.sh` and `docs/paper_draft.md`.

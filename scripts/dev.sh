@@ -144,6 +144,23 @@ echo "Starting FastAPI backend on :8000..."
 BACKEND_PID=$!
 PIDS+=("$BACKEND_PID")
 
+echo "Waiting for backend..."
+for i in $(seq 1 30); do
+  if curl -s -o /dev/null http://127.0.0.1:8000/docs; then
+    echo "Backend is up."
+    break
+  fi
+  sleep 1
+done
+
+if [ ! -f "$ROOT_DIR/backend/models/forgery_cnn.pt" ]; then
+  echo "Training forensics CNN (first run only)..."
+  ./venv/bin/python "$ROOT_DIR/backend/notebooks/train_forgery_cnn.py" >> "$ROOT_DIR/.cnn-train.log" 2>&1 || true
+fi
+
+echo "Seeding demo data..."
+curl -s -X POST http://127.0.0.1:8000/api/v1/demo/seed > /dev/null || echo "Demo seed skipped (backend not ready)"
+
 # ---------------------------------------------------------------------------
 # 3. Frontend
 # ---------------------------------------------------------------------------
@@ -151,6 +168,43 @@ echo "[5/5] Preparing frontend..."
 cd "$FRONTEND_DIR"
 [ -d node_modules ] || npm install
 [ -f .env.local ] || cp .env.example .env.local
+
+mkdir -p public/circuits
+cp "$ROOT_DIR/circuits/ClaimProver_js/ClaimProver.wasm" public/circuits/ClaimProver.wasm
+cp "$ROOT_DIR/circuits/ClaimProver_final.zkey" public/circuits/ClaimProver_final.zkey
+cp "$ROOT_DIR/circuits/NonRevocation_js/NonRevocation.wasm" public/circuits/NonRevocation.wasm
+cp "$ROOT_DIR/circuits/NonRevocation_final.zkey" public/circuits/NonRevocation_final.zkey
+
+python3 - "$FRONTEND_DIR/.env.local" "$ISSUER_REGISTRY" "$CREDENTIAL_ANCHOR" "$REVOCATION_REGISTRY" "$VERIFICATION_GATEWAY" <<'PYEOF'
+import sys
+env_file, issuer_registry, anchor, revocation, gateway = sys.argv[1:6]
+updates = {
+    "NEXT_PUBLIC_API_URL": "http://localhost:8000",
+    "NEXT_PUBLIC_ISSUER_REGISTRY_ADDRESS": issuer_registry,
+    "NEXT_PUBLIC_ANCHOR_CONTRACT_ADDRESS": anchor,
+    "NEXT_PUBLIC_REVOCATION_CONTRACT_ADDRESS": revocation,
+    "NEXT_PUBLIC_VERIFICATION_GATEWAY_ADDRESS": gateway,
+}
+try:
+    with open(env_file) as f:
+        lines = f.readlines()
+except FileNotFoundError:
+    lines = []
+seen = set()
+out = []
+for line in lines:
+    key = line.split("=", 1)[0].strip()
+    if key in updates:
+        out.append(f'{key}="{updates[key]}"\n')
+        seen.add(key)
+    else:
+        out.append(line)
+for key, value in updates.items():
+    if key not in seen:
+        out.append(f'{key}="{value}"\n')
+with open(env_file, "w") as f:
+    f.writelines(out)
+PYEOF
 
 echo "Starting Next.js frontend on :3000..."
 npm run dev > "$ROOT_DIR/.frontend.log" 2>&1 &

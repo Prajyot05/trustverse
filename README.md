@@ -1,66 +1,87 @@
-# TrustVerse 🌐🛡️
+# TrustVerse
 
-TrustVerse is an end-to-end, privacy-preserving institutional credential verification platform that combines **W3C Verifiable Credentials**, **Ethereum Smart Contracts**, **Zero-Knowledge Proofs (zk-SNARKs)**, and **AI Forensics** to completely eliminate credential fraud.
+Privacy-preserving academic credential verification using **W3C Verifiable Credentials**, **Groth16 zk-SNARKs** (selective disclosure + Merkle non-revocation), **Ethereum anchoring**, and an **ELA-CNN forensics** module for legacy document scans.
 
-## Architecture
+## What works today
 
-1. **W3C Verifiable Credentials**: Credentials are issued as standard W3C VCs, encrypted, and pinned to IPFS. The hash of the credential is what gets anchored on-chain.
-2. **Ethereum Blockchain (Hardhat)**: Stores issuer registry, credential anchors, and revocation states. Prevents historical tampering.
-3. **Zero-Knowledge Proofs (Circom/SnarkJS)**: Allows credential holders to prove properties (e.g., "CGPA > 3.0", "Degree is valid") to verifiers without revealing the actual underlying data.
-4. **AI Forensics (PyTorch CNN)**: A deep learning pipeline built to detect forged document scans (using Error Level Analysis and Perceptual Hashing) if physical scans are presented instead of cryptographically pure VCs.
-5. **Full-Stack Application**:
-   - **Frontend**: Next.js 14, Tailwind CSS, WalletConnect (zustand).
-   - **Backend**: FastAPI (Python), SQLAlchemy (SQLite), PyTorch.
+- Issuer registers on-chain (`IssuerRegistry`) and issues encrypted credentials with Poseidon commitments
+- Issuer anchors credentials via MetaMask (`CredentialAnchor`)
+- Holder wallet decrypts credentials and generates **ClaimProver** + **NonRevocation** proofs in-browser (snarkjs)
+- Verifier creates threshold requests; proofs are verified on-chain via **VerificationGateway**
+- Revocation Merkle tree (backend) with root published to the gateway; issuer revoke UI
+- Guided demo mode (`POST /demo/seed`) with seeded university, students, revoked credential, pending request
+- ELA heatmap + CNN score on verifier scan upload (train weights with included notebook)
 
-## Directory Structure
+## What is research-only
 
-- `frontend/`: Next.js web application for Issuers, Holders, and Verifiers.
-- `backend/`: FastAPI server handling off-chain data, ZK generation APIs, and AI inference.
-- `contracts/`: Hardhat environment with Solidity smart contracts for registry and anchoring.
-- `circuits/`: Circom circuits for generating zk-SNARKs.
+- **SDC / VisualBinder** visual binding under `research/sdc-spike/` — original DCT features failed evaluation (100% FAR). Region-hash R1 spike is gated; see `eval/out/r1_gate.json`.
 
-## Quick Start
+## Quick start
 
-### 1. Smart Contracts
 ```bash
-cd contracts
-npm install
-npx hardhat node
-# In a new terminal:
-npx hardhat run scripts/deploy.ts --network localhost
+./scripts/dev.sh
 ```
 
-### 2. Backend API
+Then open [http://localhost:3000](http://localhost:3000) and click **Run guided demo**, or:
+
 ```bash
-cd backend
-python -m venv venv
-source venv/bin/activate
+curl -X POST http://localhost:8000/api/v1/demo/seed
+```
+
+### Manual setup
+
+```bash
+# Contracts
+cd contracts && npm install
+npx hardhat node   # terminal 1
+npx hardhat run scripts/deploy.ts --network localhost   # terminal 2
+
+# Backend
+cd backend && python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env
+cp .env.example .env   # fill contract addresses from contracts/deployed-addresses.json
 uvicorn app.main:app --reload
-```
 
-### 3. Frontend App
-```bash
-cd frontend
-npm install
-cp .env.example .env.local
+# Frontend
+cd frontend && npm install && cp .env.example .env.local
 npm run dev
 ```
 
-## Production Deployment (Docker)
-A `docker-compose.yml` is provided for easy deployment of the backend and frontend services.
+### Train forensics CNN
+
 ```bash
-docker-compose up -d --build
+cd backend && source venv/bin/activate
+python notebooks/train_forgery_cnn.py
 ```
 
-## Features Complete 🚀
-- Institutional issuance of VCs with Poseidon commitments.
-- Multi-sig revocation registry.
-- Zero-Knowledge property proofs (e.g., threshold verification).
-- On-chain anchor verification.
-- Document forgery detection (CNN-based ELA).
-- TrustVerse Score algorithm.
+Outputs `backend/models/forgery_cnn.pt` and `eval/out/cnn_metrics.json`.
 
----
-Built with ❤️ for a trustless future.
+## Directory layout
+
+| Path | Purpose |
+|------|---------|
+| `frontend/` | Next.js — issuer, wallet, verifier portals |
+| `backend/` | FastAPI — issuance, revocation tree, forensics, demo seed |
+| `contracts/` | Hardhat — registry, anchor, revocation, gateway, Groth16 verifiers |
+| `circuits/` | ClaimProver, NonRevocation, IssuerMembership (+ fixtures) |
+| `eval/` | Reproducible evaluation scripts |
+| `research/sdc-spike/` | Gated visual-binding research (not product spine) |
+| `docs/` | Architecture and paper draft |
+
+## Evaluation
+
+```bash
+bash eval/run_all.sh
+```
+
+Produces circuit sizes, proof timings, gas report (with local chain), CNN metrics, and R1 gate results under `eval/out/`.
+
+## Stack
+
+- Next.js 14, Tailwind, ethers v6, snarkjs (browser proving)
+- FastAPI, SQLAlchemy (SQLite), PyTorch, web3.py
+- Hardhat, Solidity 0.8.x, Circom 2, Groth16
+
+## Paper
+
+Draft: `docs/paper_draft.md` — target framing for privacy-preserving credentials with on-chain non-revocation and forensic fallback.
