@@ -3,6 +3,14 @@
 .env
 .env.*
 !.env.example
+*.log
+.idea/
+.vscode/
+*.swp
+*.swo
+.hardhat-node.log
+.backend.log
+.frontend.log
 
 # Frontend (Next.js & Node)
 frontend/node_modules/
@@ -18,8 +26,8 @@ pnpm-debug.log*
 # Backend (Python/FastAPI)
 backend/venv/
 backend/env/
-backend/__pycache__/
-backend/*.py[cod]
+backend/**/__pycache__/
+backend/**/*.py[cod]
 backend/*$py.class
 backend/.pytest_cache/
 backend/.coverage
@@ -27,6 +35,15 @@ backend/htmlcov/
 backend/trustverse.db
 backend/celerybeat-schedule
 *.sqlite3
+
+# Research (Python prototypes)
+research/venv/
+research/**/__pycache__/
+research/**/*.py[cod]
+research/.pytest_cache/
+research/.mypy_cache/
+research/sdc-spike/venv/
+research/sdc-spike/data/*/*.tmp
 
 # Contracts (Hardhat & Node)
 contracts/node_modules/
@@ -36,3 +53,12 @@ contracts/typechain-types/
 contracts/coverage/
 contracts/coverage.json
 contracts/dist/
+contracts/deployed-addresses.json
+
+# Circuits (Circom / snarkjs) - build artifacts only; committed final
+# wasm/zkey/vkey for the shipped circuits live outside these patterns
+# (see circuits/README.md for what is intentionally committed).
+circuits/node_modules/
+circuits/build/
+eval/out/
+eval/**/__pycache__/

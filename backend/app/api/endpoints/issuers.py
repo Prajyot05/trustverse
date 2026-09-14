@@ -23,7 +23,7 @@ def register_issuer(req: IssuerRegistrationRequest, db: Session = Depends(get_db
     new_issuer = Issuer(
         did=req.did,
         name=req.name,
-        wallet_address=req.wallet_address.lower(),
+        eth_address=req.wallet_address.lower(),
         metadata_json=req.metadata_json,
         is_active=True
     )
@@ -41,7 +41,7 @@ def register_issuer(req: IssuerRegistrationRequest, db: Session = Depends(get_db
     return IssuerResponse(
         did=new_issuer.did,
         name=new_issuer.name,
-        wallet_address=new_issuer.wallet_address,
+        wallet_address=new_issuer.eth_address,
         is_active=new_issuer.is_active,
         registered_at=new_issuer.registered_at,
         metrics={"issued": 0, "revoked": 0, "verifications": 0} # Mock metrics for now, fetch from on-chain in real
@@ -57,7 +57,7 @@ def get_issuer_profile(did: str, db: Session = Depends(get_db)) -> Any:
     return IssuerResponse(
         did=issuer.did,
         name=issuer.name,
-        wallet_address=issuer.wallet_address,
+        wallet_address=issuer.eth_address,
         is_active=issuer.is_active,
         registered_at=issuer.registered_at,
         metrics={"issued": 0, "revoked": 0, "verifications": 0}

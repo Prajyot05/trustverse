@@ -2,14 +2,16 @@ from abc import ABC, abstractmethod
 from typing import Dict, Any, List
 from web3 import Web3
 
+ZERO_HASH = b"\x00" * 32
+
 class AnchorProvider(ABC):
     @abstractmethod
-    def anchor_credential_hash(self, credential_hash: bytes, issuer_did: str, poseidon_commitment: bytes) -> Dict[str, Any]:
+    def anchor_credential_hash(self, credential_hash: bytes, issuer_did: str, poseidon_commitment: bytes, parent_hash: bytes = ZERO_HASH) -> Dict[str, Any]:
         """Anchor a single credential hash on-chain"""
         pass
 
     @abstractmethod
-    def batch_anchor_credentials(self, credential_hashes: List[bytes], poseidon_commitments: List[bytes], issuer_did: str) -> Dict[str, Any]:
+    def batch_anchor_credentials(self, credential_hashes: List[bytes], poseidon_commitments: List[bytes], issuer_did: str, parent_hashes: List[bytes] = None) -> Dict[str, Any]:
         """Batch anchor multiple credential hashes on-chain"""
         pass
 
@@ -34,10 +36,10 @@ class EthereumAnchorProvider(AnchorProvider):
         
         # Load ABIs - In a real app, these would be loaded from JSON artifacts
         self.anchor_abi = [
-            {"inputs":[{"internalType":"bytes32","name":"_credentialHash","type":"bytes32"},{"internalType":"bytes32","name":"_poseidonCommitment","type":"bytes32"},{"internalType":"string","name":"_issuerDID","type":"string"}],"name":"anchorCredential","outputs":[],"stateMutability":"nonpayable","type":"function"},
-            {"inputs":[{"internalType":"bytes32[]","name":"_credentialHashes","type":"bytes32[]"},{"internalType":"bytes32[]","name":"_poseidonCommitments","type":"bytes32[]"},{"internalType":"string","name":"_issuerDID","type":"string"}],"name":"batchAnchorCredentials","outputs":[],"stateMutability":"nonpayable","type":"function"},
+            {"inputs":[{"internalType":"bytes32","name":"_credentialHash","type":"bytes32"},{"internalType":"bytes32","name":"_poseidonCommitment","type":"bytes32"},{"internalType":"string","name":"_issuerDID","type":"string"},{"internalType":"bytes32","name":"_parentHash","type":"bytes32"}],"name":"anchorCredential","outputs":[],"stateMutability":"nonpayable","type":"function"},
+            {"inputs":[{"internalType":"bytes32[]","name":"_credentialHashes","type":"bytes32[]"},{"internalType":"bytes32[]","name":"_poseidonCommitments","type":"bytes32[]"},{"internalType":"string","name":"_issuerDID","type":"string"},{"internalType":"bytes32[]","name":"_parentHashes","type":"bytes32[]"}],"name":"batchAnchorCredentials","outputs":[],"stateMutability":"nonpayable","type":"function"},
             {"inputs":[{"internalType":"bytes32","name":"_credentialHash","type":"bytes32"}],"name":"isAnchored","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},
-            {"inputs":[{"internalType":"bytes32","name":"_credentialHash","type":"bytes32"}],"name":"getAnchor","outputs":[{"components":[{"internalType":"bytes32","name":"credentialHash","type":"bytes32"},{"internalType":"bytes32","name":"poseidonCommitment","type":"bytes32"},{"internalType":"string","name":"issuerDID","type":"string"},{"internalType":"uint256","name":"anchoredAt","type":"uint256"}],"internalType":"struct CredentialAnchor.Anchor","name":"","type":"tuple"}],"stateMutability":"view","type":"function"}
+            {"inputs":[{"internalType":"bytes32","name":"_credentialHash","type":"bytes32"}],"name":"getAnchor","outputs":[{"components":[{"internalType":"bytes32","name":"credentialHash","type":"bytes32"},{"internalType":"bytes32","name":"poseidonCommitment","type":"bytes32"},{"internalType":"string","name":"issuerDID","type":"string"},{"internalType":"uint256","name":"anchoredAt","type":"uint256"},{"internalType":"bytes32","name":"parentHash","type":"bytes32"}],"internalType":"struct CredentialAnchor.Anchor","name":"","type":"tuple"}],"stateMutability":"view","type":"function"}
         ]
         
         self.revocation_abi = [
@@ -68,12 +70,13 @@ class EthereumAnchorProvider(AnchorProvider):
             "status": receipt.status
         }
 
-    def anchor_credential_hash(self, credential_hash: bytes, issuer_did: str, poseidon_commitment: bytes) -> Dict[str, Any]:
-        func = self.anchor_contract.functions.anchorCredential(credential_hash, poseidon_commitment, issuer_did)
+    def anchor_credential_hash(self, credential_hash: bytes, issuer_did: str, poseidon_commitment: bytes, parent_hash: bytes = ZERO_HASH) -> Dict[str, Any]:
+        func = self.anchor_contract.functions.anchorCredential(credential_hash, poseidon_commitment, issuer_did, parent_hash)
         return self._build_and_send_tx(func)
 
-    def batch_anchor_credentials(self, credential_hashes: List[bytes], poseidon_commitments: List[bytes], issuer_did: str) -> Dict[str, Any]:
-        func = self.anchor_contract.functions.batchAnchorCredentials(credential_hashes, poseidon_commitments, issuer_did)
+    def batch_anchor_credentials(self, credential_hashes: List[bytes], poseidon_commitments: List[bytes], issuer_did: str, parent_hashes: List[bytes] = None) -> Dict[str, Any]:
+        parent_hashes = parent_hashes or [ZERO_HASH] * len(credential_hashes)
+        func = self.anchor_contract.functions.batchAnchorCredentials(credential_hashes, poseidon_commitments, issuer_did, parent_hashes)
         return self._build_and_send_tx(func)
 
     def verify_anchor(self, credential_hash: bytes) -> Dict[str, Any]:
@@ -88,7 +91,8 @@ class EthereumAnchorProvider(AnchorProvider):
                 "credentialHash": anchor_data[0].hex(),
                 "poseidonCommitment": anchor_data[1].hex(),
                 "issuerDID": anchor_data[2],
-                "anchoredAt": anchor_data[3]
+                "anchoredAt": anchor_data[3],
+                "parentHash": anchor_data[4].hex()
             }
         except Exception as e:
             return {"status": "ERROR", "message": str(e)}

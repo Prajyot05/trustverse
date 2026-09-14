@@ -53,9 +53,29 @@ export default function VerifierDashboard() {
       
       if (res.ok) {
         const data = await res.json();
+        // Backend shape: { filename, analysis: { authenticity_score, is_authentic, confidence }, status }
+        const analysis = data.analysis;
+
+        // Fetch the real perceptual hash rather than showing a placeholder
+        let phash: string | undefined;
+        try {
+          const phashFormData = new FormData();
+          phashFormData.append('file', selectedFile);
+          const phashRes = await fetch(`${API_URL}/api/v1/forensics/phash`, {
+            method: 'POST',
+            body: phashFormData,
+          });
+          if (phashRes.ok) {
+            const phashData = await phashRes.json();
+            phash = phashData.phash;
+          }
+        } catch (phashErr) {
+          console.error(phashErr);
+        }
+
         setAnalysisResult({
           filename: selectedFile.name,
-          analysis: data
+          analysis: { ...analysis, phash },
         });
 
         // Try to get Trust Score
@@ -64,7 +84,7 @@ export default function VerifierDashboard() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             credential_hash: "0xmock", // Ideally, we'd extract this from QR in a real flow
-            ai_authenticity_score: data.authenticity_score
+            ai_authenticity_score: analysis.authenticity_score
           })
         });
         if (tsRes.ok) {
@@ -235,15 +255,18 @@ export default function VerifierDashboard() {
                       </div>
                       <div className="p-3 bg-black/30 rounded-lg text-sm text-gray-400 font-mono text-xs break-all">
                         <p className="text-gray-500 mb-1">pHash (Perceptual Hash)</p>
-                        {analysisResult.analysis.phash || 'a4c3d82f7b1e9842'}
+                        {analysisResult.analysis.phash || 'unavailable'}
                       </div>
                       
                       {trustScore && (
                         <div className="pt-4 border-t border-white/10 mt-4">
                           <div className="flex justify-between items-center">
                             <span className="text-sm font-bold text-white">TrustVerse Score</span>
-                            <span className="text-lg font-bold text-blue-400">{Math.round(trustScore.final_score * 100)}/100</span>
+                            <span className="text-lg font-bold text-blue-400">{Math.round(trustScore.score)}/100</span>
                           </div>
+                          {trustScore.status && (
+                            <p className="text-xs text-gray-500 mt-1">{trustScore.status}{trustScore.reason ? `: ${trustScore.reason}` : ''}</p>
+                          )}
                         </div>
                       )}
                     </div>
