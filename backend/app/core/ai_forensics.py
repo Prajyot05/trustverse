@@ -1,4 +1,6 @@
 import os
+import base64
+from io import BytesIO
 import cv2
 import numpy as np
 import imagehash
@@ -7,7 +9,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.transforms as transforms
-from io import BytesIO
+
+MODEL_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "models", "forgery_cnn.pt")
+MODEL_PATH = os.path.abspath(MODEL_PATH)
 
 # ==============================================================================
 # 1. Error Level Analysis (ELA) Processing
@@ -88,41 +92,44 @@ def get_model() -> ForgeryDetectionCNN:
     global _model
     if _model is None:
         _model = ForgeryDetectionCNN()
+        if not os.path.exists(MODEL_PATH):
+            raise FileNotFoundError(
+                f"Forgery CNN weights missing at {MODEL_PATH}. "
+                "Run `python backend/notebooks/train_forgery_cnn.py` to train on the synthetic certificate set."
+            )
+        state = torch.load(MODEL_PATH, map_location="cpu")
+        _model.load_state_dict(state)
         _model.eval()
-        # In a real scenario, we would load weights here:
-        # _model.load_state_dict(torch.load("weights/best_model.pth"))
     return _model
 
+
+def ela_heatmap_png(ela_img: Image.Image) -> str:
+    """Return a data-URL PNG of the ELA image for the verifier UI."""
+    buf = BytesIO()
+    ela_img.resize((256, 256)).save(buf, format="PNG")
+    return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
+
+
 def analyze_image_authenticity(image_bytes: bytes) -> dict:
-    """
-    Runs the full ELA + CNN inference pipeline.
-    """
-    try:
-        # 1. Generate ELA
-        ela_img = process_ela(image_bytes)
-        
-        # 2. Transform for PyTorch
-        transform = transforms.Compose([
-            transforms.Resize((128, 128)),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
-        ])
-        
-        input_tensor = transform(ela_img).unsqueeze(0) # Add batch dimension
-        
-        # 3. Inference
-        model = get_model()
-        with torch.no_grad():
-            score = model(input_tensor).item()
-            
-        # Return results
-        return {
-            "authenticity_score": score,
-            "is_authentic": score > 0.6,
-            "confidence": abs(score - 0.5) * 2 # 0 to 1
-        }
-    except Exception as e:
-        raise ValueError(f"Failed to analyze image: {str(e)}")
+    ela_img = process_ela(image_bytes)
+    transform = transforms.Compose([
+        transforms.Resize((128, 128)),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
+    ])
+    input_tensor = transform(ela_img).unsqueeze(0)
+    model = get_model()
+    with torch.no_grad():
+        score = model(input_tensor).item()
+    phash = compute_phash(image_bytes)
+    return {
+        "authenticity_score": score,
+        "is_authentic": score > 0.6,
+        "confidence": abs(score - 0.5) * 2,
+        "phash": phash,
+        "ela_heatmap": ela_heatmap_png(ela_img),
+        "model_path": MODEL_PATH,
+    }
 
 # ==============================================================================
 # 3. Perceptual Hashing (pHash)
