@@ -41,8 +41,9 @@ class Issuer(Base):
 
 class CredentialRecord(Base):
     """
-    Off-chain record of credentials. Actual credential content is in IPFS.
-    This tracks the state of credentials issued or requested through TrustVerse.
+    Off-chain record of credentials. Ciphertext is stored locally (and
+    optionally pinned). The SHA-256 of the signed VC is the on-chain
+    credentialHash; poseidon_commitment is the ZK credentialRoot.
     """
     __tablename__ = "credentials"
     
@@ -52,5 +53,40 @@ class CredentialRecord(Base):
     status = Column(String) # Active, Suspended, Revoked, Expired
     ipfs_cid = Column(String)
     anchored_at = Column(DateTime)
+    poseidon_commitment = Column(String)
+    encrypted_blob = Column(JSON)
+    issuer_wallet = Column(String)
+    anchor_tx_hash = Column(String)
+    claims_hash = Column(String)
+    salt = Column(String)
+    nullifier = Column(String)
     
     issuer = relationship("Issuer")
+
+
+class VerificationRequest(Base):
+    __tablename__ = "verification_requests"
+
+    id = Column(Integer, primary_key=True, index=True)
+    verifier_did = Column(String, index=True, nullable=False)
+    holder_did = Column(String, index=True)
+    issuer_did = Column(String)
+    attribute = Column(String, default="cgpa")
+    threshold = Column(Integer, nullable=False)  # cgpaScaled, e.g. 800 for 8.00
+    status = Column(String, default="pending")  # pending, fulfilled, failed, expired
+    credential_hash = Column(String)
+    claim_tx_hash = Column(String)
+    nonrev_tx_hash = Column(String)
+    block_number = Column(Integer)
+    result = Column(String)  # pass / fail
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class MerkleMeta(Base):
+    """Singleton row storing the current revocation sparse-Merkle root."""
+    __tablename__ = "merkle_meta"
+
+    id = Column(Integer, primary_key=True)
+    root = Column(String, nullable=False, default="0")
+    depth = Column(Integer, default=20)
+    occupied_leaves = Column(JSON, default=dict)  # {position_str: "1"}

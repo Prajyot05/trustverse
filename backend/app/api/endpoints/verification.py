@@ -1,71 +1,133 @@
 from fastapi import APIRouter, HTTPException, Depends
-from typing import Any, Dict
-from pydantic import BaseModel
+from typing import Any, Optional
+from sqlalchemy.orm import Session
+from datetime import datetime
 
-from app.core.anchor import EthereumAnchorProvider
-import os
+from app.schemas.credential import VerificationRequestCreate, ProofIndexRequest
+from app.db.session import get_db
+from app.db.models import VerificationRequest, Issuer
+from app.core.events import event_bus, TrustEventPayload
+from app.core.chain import read_anchor, read_revoked
 
 router = APIRouter()
 
-# In a real app, these would come from config/env
-RPC_URL = os.getenv("ETH_RPC_URL", "http://127.0.0.1:8545")
-ANCHOR_ADDRESS = os.getenv("ANCHOR_CONTRACT_ADDRESS", "0x5FbDB2315678afecb367f032d93F642f64180aa3")
-REVOCATION_ADDRESS = os.getenv("REVOCATION_CONTRACT_ADDRESS", "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512")
 
-def get_anchor_provider():
-    return EthereumAnchorProvider(RPC_URL, ANCHOR_ADDRESS, REVOCATION_ADDRESS)
+@router.post("/requests")
+def create_request(req: VerificationRequestCreate, db: Session = Depends(get_db)) -> Any:
+    threshold_scaled = int(round(float(req.threshold) * 100))
+    row = VerificationRequest(
+        verifier_did=req.verifier_did,
+        holder_did=req.holder_did,
+        issuer_did=req.issuer_did,
+        attribute=req.attribute,
+        threshold=threshold_scaled,
+        status="pending",
+        created_at=datetime.utcnow(),
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    event_bus.publish(
+        TrustEventPayload(
+            event_type="ProofRequested",
+            actor_did=req.verifier_did,
+            target_did=req.holder_did or "",
+            payload={"request_id": row.id, "threshold": threshold_scaled},
+        )
+    )
+    return _serialize(row)
 
-class ProofSubmitRequest(BaseModel):
-    credential_hash: str
-    proof: Dict[str, Any]
-    public_signals: list
+
+@router.get("/requests")
+def list_requests(
+    holder_did: Optional[str] = None,
+    verifier_did: Optional[str] = None,
+    db: Session = Depends(get_db),
+) -> Any:
+    q = db.query(VerificationRequest)
+    if holder_did:
+        q = q.filter(VerificationRequest.holder_did == holder_did)
+    if verifier_did:
+        q = q.filter(VerificationRequest.verifier_did == verifier_did)
+    return [_serialize(r) for r in q.order_by(VerificationRequest.id.desc()).all()]
+
+
+@router.get("/requests/{request_id}")
+def get_request(request_id: int, db: Session = Depends(get_db)) -> Any:
+    row = db.query(VerificationRequest).filter(VerificationRequest.id == request_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Request not found")
+    return _serialize(row)
+
+
+@router.post("/proof")
+def index_proof(req: ProofIndexRequest, db: Session = Depends(get_db)) -> Any:
+    """
+    Indexer: the holder's wallet submits on-chain tx hashes after
+    VerificationGateway.verifyClaimProof / verifyNonRevocationProof succeed.
+    No mock tx hashes — the wallet must pass real receipts.
+    """
+    if not req.claim_tx_hash or req.claim_tx_hash.startswith("0xmock"):
+        raise HTTPException(status_code=400, detail="Real claim_tx_hash required")
+
+    row = db.query(VerificationRequest).filter(VerificationRequest.id == req.request_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Request not found")
+
+    row.credential_hash = req.credential_hash
+    row.claim_tx_hash = req.claim_tx_hash
+    row.nonrev_tx_hash = req.nonrev_tx_hash
+    row.block_number = req.block_number
+    row.result = req.result
+    row.status = "fulfilled" if req.result == "pass" else "failed"
+    db.commit()
+
+    issuer_name = None
+    if row.issuer_did:
+        issuer = db.query(Issuer).filter(Issuer.did == row.issuer_did).first()
+        issuer_name = issuer.name if issuer else row.issuer_did
+
+    event_bus.publish(
+        TrustEventPayload(
+            event_type="VerificationCompleted",
+            actor_did=row.verifier_did,
+            target_did=row.holder_did or "",
+            credential_hash=req.credential_hash,
+            payload={"request_id": row.id, "result": req.result, "tx": req.claim_tx_hash},
+        )
+    )
+    return _serialize(row, issuer_name=issuer_name)
+
 
 @router.get("/{credential_hash}")
 def verify_credential_public(credential_hash: str) -> Any:
-    """
-    Public endpoint to verify a credential hash against the blockchain.
-    """
     try:
-        # Convert hex string to bytes if needed
-        hash_bytes = bytes.fromhex(credential_hash.replace("0x", ""))
-        if len(hash_bytes) != 32:
-            raise ValueError("Invalid hash length")
-            
-        provider = get_anchor_provider()
-        
-        # 1. Check if anchored
-        anchor_data = provider.verify_anchor(hash_bytes)
+        anchor_data = read_anchor(credential_hash)
         if anchor_data.get("status") != "ANCHORED":
             return {"is_valid": False, "reason": "Not anchored on blockchain", "data": None}
-            
-        # 2. Check if revoked
-        is_revoked = provider.is_revoked(hash_bytes)
-        if is_revoked:
+        if read_revoked(credential_hash):
             return {"is_valid": False, "reason": "Credential has been revoked by issuer", "data": anchor_data}
-            
-        return {
-            "is_valid": True,
-            "reason": "Valid and active",
-            "data": anchor_data
-        }
+        return {"is_valid": True, "reason": "Valid and active", "data": anchor_data}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-@router.post("/proof")
-def submit_zk_proof(req: ProofSubmitRequest) -> Any:
-    """
-    Submit a ZK proof for verification.
-    In a real system, this would call VerificationGateway.sol on-chain,
-    or verify the proof off-chain using snarkjs if gas costs are a concern.
-    """
-    # For now, we return success as long as it's structurally okay
-    if not req.proof or not req.public_signals:
-        raise HTTPException(status_code=400, detail="Invalid proof format")
-        
-    # Example off-chain check or sending tx to VerificationGateway
-    # returning a mock success for UI integration
+
+def _serialize(row: VerificationRequest, issuer_name: str = None) -> dict:
     return {
-        "status": "success",
-        "verified": True,
-        "tx_hash": "0xmocktxhash"
+        "id": row.id,
+        "verifier_did": row.verifier_did,
+        "holder_did": row.holder_did,
+        "issuer_did": row.issuer_did,
+        "issuer_name": issuer_name,
+        "attribute": row.attribute,
+        "threshold": row.threshold,
+        "threshold_display": row.threshold / 100.0,
+        "status": row.status,
+        "credential_hash": row.credential_hash,
+        "claim_tx_hash": row.claim_tx_hash,
+        "nonrev_tx_hash": row.nonrev_tx_hash,
+        "block_number": row.block_number,
+        "result": row.result,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+        "wallet_deep_link": f"/wallet?request={row.id}",
     }

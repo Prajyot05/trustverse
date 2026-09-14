@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, Optional
 from datetime import datetime
 
 class CredentialIssueRequest(BaseModel):
@@ -7,12 +7,11 @@ class CredentialIssueRequest(BaseModel):
     holder_did: str
     schema_id: str
     credential_subject: Dict[str, Any]
-    # For a real implementation, the issuer private key should not be sent over API
-    # It should be managed by a secure KMS. For this boilerplate demo, we accept it.
-    issuer_private_key: str
-    # Similarly, holder_shared_key is typically established via key exchange
-    # We pass it here for simplicity in this demo phase
-    holder_shared_key_hex: str
+    issuer_wallet_address: str
+    # Optional: only used by demo seed. Live issuance signs the on-chain
+    # anchor in MetaMask and does not send a private key.
+    issuer_private_key: Optional[str] = None
+    holder_shared_key_hex: Optional[str] = None
 
 class CredentialIssueResponse(BaseModel):
     status: str
@@ -28,4 +27,22 @@ class RevocationRequest(BaseModel):
     credential_hash: str
     reason_code: int
     details: str
-    issuer_private_key: str
+
+class AnchorConfirmRequest(BaseModel):
+    credential_hash: str
+    tx_hash: str
+
+class VerificationRequestCreate(BaseModel):
+    verifier_did: str
+    holder_did: Optional[str] = None
+    issuer_did: Optional[str] = None
+    attribute: str = "cgpa"
+    threshold: float  # e.g. 8.0; stored as cgpaScaled int
+
+class ProofIndexRequest(BaseModel):
+    request_id: int
+    credential_hash: str
+    claim_tx_hash: str
+    nonrev_tx_hash: Optional[str] = None
+    block_number: Optional[int] = None
+    result: str = "pass"

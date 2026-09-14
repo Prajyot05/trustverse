@@ -1,11 +1,24 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.endpoints import credentials, forensics, issuers, verification, trust_score
-from app.db.session import engine
-from app.db.models import Base
+from app.api.endpoints import credentials, forensics, issuers, verification, trust_score, demo
+from app.db.session import engine, SessionLocal
+from app.db.models import Base, MerkleMeta
+from app.core.merkle import SparseMerkleTree, LEVELS
 
-# Initialize Database
 Base.metadata.create_all(bind=engine)
+
+def _init_merkle():
+    db = SessionLocal()
+    try:
+        row = db.query(MerkleMeta).filter(MerkleMeta.id == 1).first()
+        if row is None:
+            tree = SparseMerkleTree(levels=LEVELS)
+            db.add(MerkleMeta(id=1, root=str(tree.root()), depth=LEVELS, occupied_leaves={}))
+            db.commit()
+    finally:
+        db.close()
+
+_init_merkle()
 
 app = FastAPI(title="TrustVerse API", version="1.0.0")
 
@@ -22,6 +35,7 @@ app.include_router(credentials.router, prefix="/api/v1/credentials", tags=["Cred
 app.include_router(forensics.router, prefix="/api/v1/forensics", tags=["AI Forensics"])
 app.include_router(verification.router, prefix="/api/v1/verify", tags=["Verification"])
 app.include_router(trust_score.router, prefix="/api/v1/trust-score", tags=["Trust Score"])
+app.include_router(demo.router, prefix="/api/v1/demo", tags=["Demo"])
 
 @app.get("/")
 def read_root():

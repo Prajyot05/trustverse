@@ -1,10 +1,25 @@
 import json
 import base64
 import os
+import hashlib
 from typing import Dict, Any, Tuple
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from eth_account.messages import encode_defunct
 from web3.auto import w3
+
+
+def holder_encryption_key(holder_did: str) -> bytes:
+    """
+    Demo-mode per-holder AES-256 key.
+
+    Production would use ECIES against an encryption public key the holder
+    publishes. MetaMask no longer exposes eth_getEncryptionPublicKey, so
+    the localhost / thesis demo derives a deterministic 32-byte key from
+    the holder DID. Both issuer (at issue time) and holder (in the wallet)
+    can recompute it without exchanging a secret. This is documented as a
+    demo limitation in docs/architecture.md.
+    """
+    return hashlib.sha256(f"trustverse-demo-key:{holder_did}".encode("utf-8")).digest()
 
 def encrypt_credential(credential_data: Dict[str, Any], shared_key: bytes) -> Dict[str, Any]:
     """

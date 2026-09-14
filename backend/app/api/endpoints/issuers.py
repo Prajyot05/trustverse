@@ -44,10 +44,25 @@ def register_issuer(req: IssuerRegistrationRequest, db: Session = Depends(get_db
         wallet_address=new_issuer.eth_address,
         is_active=new_issuer.is_active,
         registered_at=new_issuer.registered_at,
-        metrics={"issued": 0, "revoked": 0, "verifications": 0} # Mock metrics for now, fetch from on-chain in real
+        metrics={"issued": 0, "revoked": 0, "verifications": 0}
     )
 
-@router.get("/{did}", response_model=IssuerResponse)
+
+@router.get("/")
+def list_issuers(db: Session = Depends(get_db)) -> Any:
+    rows = db.query(Issuer).all()
+    return [
+        {
+            "did": i.did,
+            "name": i.name,
+            "wallet_address": i.eth_address,
+            "is_active": i.is_active,
+        }
+        for i in rows
+    ]
+
+
+@router.get("/{did:path}", response_model=IssuerResponse)
 def get_issuer_profile(did: str, db: Session = Depends(get_db)) -> Any:
     issuer = db.query(Issuer).filter(Issuer.did == did).first()
     if not issuer:
