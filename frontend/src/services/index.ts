@@ -7,6 +7,7 @@ export type {
   HolderCredential,
   VerifyRequest,
   VerifyRequestSummary,
+  ListRequestsFilter,
   PollStatus,
   ForensicsAnalysis,
   AnalysisResult,

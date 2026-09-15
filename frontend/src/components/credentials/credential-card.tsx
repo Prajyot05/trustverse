@@ -116,11 +116,24 @@ export function CredentialCard({
         </div>
       )}
 
-      {commitment && (
-        <div className="px-6">
-          <HashChip value={commitment} label="Commitment" className="w-full" />
-        </div>
-      )}
+      <div className="flex flex-col gap-2 px-6">
+        <HashChip
+          value={hash}
+          label="Credential hash"
+          start={10}
+          end={8}
+          className="w-full"
+        />
+        {commitment && (
+          <HashChip
+            value={commitment}
+            label="Commitment"
+            start={8}
+            end={6}
+            className="w-full"
+          />
+        )}
+      </div>
 
       {actions && <div className="px-6">{actions}</div>}
     </Card>

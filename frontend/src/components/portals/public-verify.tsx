@@ -2,7 +2,12 @@
 
 import { AlertTriangle, Loader2, Search, ShieldCheck } from "lucide-react";
 import { useState } from "react";
-import { useServices, type PublicVerifyResult } from "@/services";
+import {
+  useServices,
+  ALICE_CRED_HASH,
+  BOB_CRED_HASH,
+  type PublicVerifyResult,
+} from "@/services";
 import { formatTimestamp } from "@/lib/format";
 import { DataField } from "@/components/data/data-field";
 import { HashChip } from "@/components/data/hash-chip";
@@ -18,12 +23,12 @@ export function PublicVerify() {
 
   const handleVerify = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!hash) return;
+    if (!hash.trim()) return;
     setIsVerifying(true);
     setResult(null);
 
     try {
-      setResult(await api.publicVerify(hash));
+      setResult(await api.publicVerify(hash.trim()));
     } catch (err) {
       console.error(err);
       setResult({
@@ -41,37 +46,73 @@ export function PublicVerify() {
 
   return (
     <div className="mx-auto flex min-h-[80vh] w-full max-w-3xl flex-col items-center px-4 py-16 sm:px-6">
-      <div className="mb-10 flex w-full flex-col items-center gap-3 text-center">
-        <span className="text-[11px] font-medium tracking-wide text-primary uppercase">
-          Public verification{mode === "demo" ? " · demo" : ""}
+      <div className="mb-8 flex w-full flex-col items-center gap-2 text-center">
+        <span className="text-sm font-medium text-primary">
+          Public verification{mode === "demo" ? " · Demo" : ""}
         </span>
         <h1 className="font-heading text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
           Verify a credential
         </h1>
-        <p className="max-w-lg text-sm text-muted-foreground">
-          Check the authenticity and on-chain anchoring of any TrustVerse
-          credential by its hash.
+        <p className="text-sm text-muted-foreground">
+          Paste a credential hash from the holder wallet.
         </p>
       </div>
 
       <form
         onSubmit={handleVerify}
-        className="flex w-full items-center gap-2 rounded-xl border border-border bg-card p-1.5 pl-4 shadow-sm focus-within:border-primary/50 focus-within:ring-3 focus-within:ring-ring/50"
+        className="flex w-full flex-col gap-2 sm:flex-row sm:items-center sm:gap-2 sm:rounded-xl sm:border sm:border-border sm:bg-card sm:p-1.5 sm:pl-4 sm:shadow-sm sm:focus-within:border-primary/50 sm:focus-within:ring-3 sm:focus-within:ring-ring/50"
       >
-        <Search className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-        <Input
-          type="text"
-          value={hash}
-          onChange={(e) => setHash(e.target.value)}
-          placeholder="Credential hash — e.g. 0xabc123…"
-          aria-label="Credential hash"
-          className="h-9 flex-1 border-0 bg-transparent font-mono text-sm shadow-none focus-visible:ring-0"
-        />
-        <Button type="submit" disabled={isVerifying || !hash} size="lg">
+        <div className="flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-border bg-card px-3 sm:border-0 sm:bg-transparent sm:px-0 sm:shadow-none">
+          <Search className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <Input
+            type="text"
+            value={hash}
+            onChange={(e) => setHash(e.target.value)}
+            placeholder="Credential hash — 0x…"
+            aria-label="Credential hash"
+            autoComplete="off"
+            spellCheck={false}
+            className="h-11 flex-1 border-0 bg-transparent font-mono text-sm shadow-none focus-visible:ring-0"
+          />
+        </div>
+        <Button
+          type="submit"
+          disabled={isVerifying || !hash.trim()}
+          size="lg"
+          className="w-full shrink-0 sm:w-auto"
+        >
           {isVerifying && <Loader2 className="size-4 animate-spin" />}
           Verify
         </Button>
       </form>
+
+      {mode === "demo" && (
+        <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+          <span className="text-sm text-muted-foreground">Try:</span>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setHash(ALICE_CRED_HASH);
+              setResult(null);
+            }}
+          >
+            Alice (valid)
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setHash(BOB_CRED_HASH);
+              setResult(null);
+            }}
+          >
+            Bob (revoked)
+          </Button>
+        </div>
+      )}
 
       {result && (
         <div className="mt-8 w-full animate-in fade-in slide-in-from-bottom-4 duration-300">
@@ -109,13 +150,6 @@ export function PublicVerify() {
                   className="sm:col-span-2"
                 />
               </div>
-            )}
-
-            {!result.data && !result.is_valid && (
-              <p className="mt-4 border-t border-border pt-4 text-foreground/80">
-                This hash does not exist on the TrustVerse anchor registry. It
-                may be invalid, from an unverified issuer, or tampered with.
-              </p>
             )}
           </Alert>
         </div>

@@ -32,7 +32,6 @@ import type {
   TxReceipt,
   VerifyRequest,
   VerifyRequestSummary,
-  PollStatus,
 } from "./types";
 
 async function parseError(res: Response): Promise<string> {
@@ -103,9 +102,13 @@ function createLiveApi(): ApiServices {
       return (await res.json()) as HolderCredential[];
     },
 
-    async listRequests(holderDid) {
+    async listRequests(filter) {
+      const params = new URLSearchParams();
+      if (filter.holderDid) params.set("holder_did", filter.holderDid);
+      if (filter.verifierDid) params.set("verifier_did", filter.verifierDid);
+      const qs = params.toString();
       const res = await fetch(
-        `${API_URL}/api/v1/verify/requests?holder_did=${encodeURIComponent(holderDid)}`
+        `${API_URL}/api/v1/verify/requests${qs ? `?${qs}` : ""}`
       );
       if (!res.ok) return [];
       return (await res.json()) as VerifyRequest[];
@@ -114,7 +117,7 @@ function createLiveApi(): ApiServices {
     async getRequest(id) {
       const res = await fetch(`${API_URL}/api/v1/verify/requests/${id}`);
       if (!res.ok) throw new Error(await parseError(res));
-      return (await res.json()) as PollStatus;
+      return (await res.json()) as VerifyRequest;
     },
 
     async createRequest(params: CreateRequestParams) {

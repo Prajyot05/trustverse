@@ -1,17 +1,19 @@
 "use client";
 
 import { Fingerprint, Loader2 } from "lucide-react";
-import { useState, useEffect, Suspense } from "react";
-import { useSearchParams } from "next/navigation";
+import { useState, useEffect, Suspense, useCallback } from "react";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import {
   useServices,
   useIdentity,
   demoWouldPass,
+  getPersonaByDid,
   type HolderCredential,
   type VerifyRequest,
 } from "@/services";
 import { friendlyError } from "@/lib/errors";
+import { formatDid } from "@/lib/format";
 import { PageHeader } from "@/components/layout/page-header";
 import { WalletGate } from "@/components/wallet/wallet-gate";
 import { QRPanel } from "@/components/data/qr-panel";
@@ -35,6 +37,8 @@ type ProofStage = "idle" | "claim" | "nonrev" | "submitting" | "done" | "error";
 function HolderWalletInner() {
   const { mode, api, chain, proofs } = useServices();
   const { address, did, signer } = useIdentity();
+  const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const requestIdParam = searchParams.get("request");
 
@@ -48,32 +52,64 @@ function HolderWalletInner() {
   const holderDid = did ?? "";
   const isBusy = stage === "claim" || stage === "nonrev" || stage === "submitting";
 
+  const clearRequestParam = useCallback(() => {
+    if (!searchParams.has("request")) return;
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("request");
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }, [pathname, router, searchParams]);
+
   const fetchCredentials = async () => {
     if (!holderDid) return;
     setCredentials(await api.listHolderCredentials(holderDid));
   };
 
-  const fetchRequests = async () => {
+  const fetchPendingRequests = async () => {
     if (!holderDid) return;
-    const all = await api.listRequests(holderDid);
+    const all = await api.listRequests({ holderDid });
     setPendingRequests(all.filter((r) => r.status === "pending"));
-    if (requestIdParam) {
-      const req = all.find((r) => String(r.id) === requestIdParam);
-      if (req) {
+  };
+
+  const openFromDeepLink = async (requestId: string) => {
+    try {
+      const req = await api.getRequest(requestId);
+      if (req.status === "pending") {
         setActiveRequest(req);
+        setStage("idle");
         setShowProofModal(true);
+        return;
       }
+      toast.message("This request was already submitted", {
+        description: `Request #${req.id} is ${req.status}.`,
+      });
+      clearRequestParam();
+    } catch {
+      toast.error("Request not found", {
+        description: "This verification link is invalid or expired.",
+      });
+      clearRequestParam();
     }
   };
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset loading before the async fetch below settles
+    if (!holderDid) return;
+    let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset loading before async wallet fetch
     setIsLoadingData(true);
-    Promise.all([fetchCredentials(), fetchRequests()]).finally(() =>
-      setIsLoadingData(false)
-    );
+    Promise.all([fetchCredentials(), fetchPendingRequests()])
+      .then(async () => {
+        if (cancelled || !requestIdParam) return;
+        await openFromDeepLink(requestIdParam);
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingData(false);
+      });
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [address, requestIdParam]);
+  }, [address, requestIdParam, holderDid]);
 
   const pickCredential = () => {
     if (!activeRequest) return credentials[0];
@@ -141,7 +177,12 @@ function HolderWalletInner() {
         result: pass ? "pass" : "fail",
       });
 
-      setStage("done");
+      setStage("idle");
+      setShowProofModal(false);
+      setActiveRequest(null);
+      clearRequestParam();
+      await fetchPendingRequests();
+
       toast.success(
         pass
           ? mode === "demo"
@@ -154,8 +195,6 @@ function HolderWalletInner() {
             : "The credential did not satisfy the requested threshold or is revoked.",
         }
       );
-      setShowProofModal(false);
-      fetchRequests();
     } catch (e) {
       console.error(e);
       setStage("error");
@@ -169,7 +208,11 @@ function HolderWalletInner() {
 
   const closeModal = (open: boolean) => {
     setShowProofModal(open);
-    if (!open) setStage("idle");
+    if (!open) {
+      setStage("idle");
+      setActiveRequest(null);
+      clearRequestParam();
+    }
   };
 
   if (!address) {
@@ -265,9 +308,7 @@ function HolderWalletInner() {
           </Card>
 
           <div className="flex flex-col gap-3">
-            <h3 className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
-              Pending requests
-            </h3>
+            <h3 className="text-sm font-medium text-muted-foreground">Pending requests</h3>
             {isLoadingData ? (
               <Skeleton className="h-16 w-full" />
             ) : pendingRequests.length === 0 ? (
@@ -276,6 +317,7 @@ function HolderWalletInner() {
               pendingRequests.map((r) => (
                 <button
                   key={r.id}
+                  type="button"
                   onClick={() => {
                     setActiveRequest(r);
                     setStage("idle");
@@ -314,7 +356,10 @@ function HolderWalletInner() {
                   <CredentialCard
                     key={cred.hash}
                     title={subj?.degree || "Academic degree"}
-                    subtitle={cred.issuer_did}
+                    subtitle={
+                      getPersonaByDid(cred.issuer_did)?.label ??
+                      `Issuer ${formatDid(cred.issuer_did)}`
+                    }
                     hash={cred.hash}
                     status={cred.status === "Active" ? "active" : "revoked"}
                     fields={[

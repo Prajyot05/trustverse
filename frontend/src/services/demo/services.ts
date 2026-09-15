@@ -208,12 +208,16 @@ function createDemoApi(): ApiServices {
         .credentials.filter((c) => c.holder_did === holderDid) as HolderCredential[];
     },
 
-    async listRequests(holderDid) {
+    async listRequests(filter) {
       ensureDemoSeeded();
       await delay(400);
       return useDemoStore
         .getState()
-        .requests.filter((r) => !holderDid || r.holder_did === holderDid) as VerifyRequest[];
+        .requests.filter((r) => {
+          if (filter.holderDid && r.holder_did !== filter.holderDid) return false;
+          if (filter.verifierDid && r.verifier_did !== filter.verifierDid) return false;
+          return true;
+        }) as VerifyRequest[];
     },
 
     async getRequest(id) {
@@ -222,13 +226,7 @@ function createDemoApi(): ApiServices {
         .getState()
         .requests.find((r) => String(r.id) === String(id));
       if (!req) throw new Error("Request not found");
-      return {
-        status: req.status,
-        block_number: req.block_number,
-        claim_tx_hash: req.claim_tx_hash,
-        nonrev_tx_hash: req.nonrev_tx_hash,
-        result: req.result,
-      };
+      return { ...req } as VerifyRequest;
     },
 
     async createRequest(params) {

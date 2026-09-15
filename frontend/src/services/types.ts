@@ -67,6 +67,11 @@ export interface VerifyRequestSummary {
   wallet_deep_link: string;
 }
 
+export interface ListRequestsFilter {
+  holderDid?: string;
+  verifierDid?: string;
+}
+
 export interface PollStatus {
   status: "pending" | "fulfilled" | "failed" | string;
   block_number?: number;
@@ -205,8 +210,8 @@ export interface ApiServices {
   markAnchored: (credentialHash: string, txHash: string) => Promise<void>;
   revokeCredential: (params: RevokeCredentialParams) => Promise<void>;
   listHolderCredentials: (holderDid: string) => Promise<HolderCredential[]>;
-  listRequests: (holderDid: string) => Promise<VerifyRequest[]>;
-  getRequest: (id: number | string) => Promise<PollStatus>;
+  listRequests: (filter: ListRequestsFilter) => Promise<VerifyRequest[]>;
+  getRequest: (id: number | string) => Promise<VerifyRequest>;
   createRequest: (params: CreateRequestParams) => Promise<VerifyRequestSummary>;
   getRevocationProof: (hash: string) => Promise<RevocationProof>;
   submitProof: (params: SubmitProofParams) => Promise<void>;
