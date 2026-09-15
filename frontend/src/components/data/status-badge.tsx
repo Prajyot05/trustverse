@@ -12,6 +12,7 @@ export type StatusKind =
   | "unregistered"
   | "verified"
   | "failed"
+  | "expired"
   | "waiting"
   | "neutral";
 
@@ -33,6 +34,7 @@ const STATUS_MAP: Record<
   },
   revoked: { label: "Revoked", variant: "destructive", dot: "bg-destructive" },
   failed: { label: "Failed", variant: "destructive", dot: "bg-destructive" },
+  expired: { label: "Expired", variant: "destructive", dot: "bg-destructive" },
   neutral: { label: "—", variant: "outline", dot: "bg-muted-foreground" },
 };
 

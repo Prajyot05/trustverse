@@ -21,10 +21,10 @@ export function DemoBanner() {
     <div className="flex flex-wrap items-center gap-2 border-b border-warning/30 bg-warning/10 px-4 py-2 text-sm sm:px-6">
       <FlaskConical className="size-4 shrink-0 text-warning" aria-hidden />
       <p className="min-w-0 flex-1 text-foreground/90">
-        <span className="font-medium">Demo mode</span>
+        <span className="font-medium">Sandbox</span>
         <span className="text-muted-foreground">
           {" "}
-          — simulated data, no wallet or blockchain.
+          — simulated data. No wallet, no gas, no blockchain. This is the single guided demo.
         </span>
       </p>
       <div className="flex items-center gap-1.5">

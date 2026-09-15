@@ -181,6 +181,9 @@ function buildSeedState(): Pick<
     name: "TrustVerse University",
     wallet_address: DEMO_PERSONAS[0].address,
     is_active: true,
+    verified: true,
+    domain: "trustverse.university",
+    accreditation: "NAAC A++",
   };
 
   const alice = makeCredential({

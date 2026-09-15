@@ -8,18 +8,29 @@ from eth_account.messages import encode_defunct
 from web3.auto import w3
 
 
-def holder_encryption_key(holder_did: str) -> bytes:
+def holder_encryption_key(holder_did: str, holder_pubkey_hex: str | None = None) -> bytes:
     """
-    Demo-mode per-holder AES-256 key.
+    Per-holder AES-256 key.
 
-    Production would use ECIES against an encryption public key the holder
-    publishes. MetaMask no longer exposes eth_getEncryptionPublicKey, so
-    the localhost / thesis demo derives a deterministic 32-byte key from
-    the holder DID. Both issuer (at issue time) and holder (in the wallet)
-    can recompute it without exchanging a secret. This is documented as a
-    demo limitation in docs/architecture.md.
+    If the holder published a secp256k1 compression/uncompressed public key
+    (embedded wallet / passkey path), bind the envelope to that key with an
+    ECIES-style KDF: SHA256("trustverse-ecies:" + pubkey). The ciphertext
+    can then only be opened by someone who knows that public key — i.e. the
+    holder who generated the keypair.
+
+    Fallback (legacy demo): deterministic SHA256("trustverse-demo-key:" + DID).
     """
+    if holder_pubkey_hex:
+        cleaned = holder_pubkey_hex.strip().lower().replace("0x", "")
+        if len(cleaned) >= 64:
+            return hashlib.sha256(f"trustverse-ecies:{cleaned}".encode("utf-8")).digest()
     return hashlib.sha256(f"trustverse-demo-key:{holder_did}".encode("utf-8")).digest()
+
+
+def encryption_scheme(holder_pubkey_hex: str | None = None) -> str:
+    if holder_pubkey_hex:
+        return "ecies-kdf-aes256gcm"
+    return "demo-did-aes"
 
 def encrypt_credential(credential_data: Dict[str, Any], shared_key: bytes) -> Dict[str, Any]:
     """

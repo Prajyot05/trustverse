@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { Fingerprint, FlaskConical, LayoutDashboard, ScanSearch, Search, Shield } from "lucide-react";
+import { Fingerprint, FlaskConical, LayoutDashboard, ScanSearch, Search, Shield, Building2 } from "lucide-react";
 
 export interface NavItem {
   href: string;
@@ -12,9 +12,10 @@ const PORTAL_ITEMS: Omit<NavItem, "href">[] = [
   { label: "Holder Wallet", icon: Shield },
   { label: "Verifier", icon: ScanSearch },
   { label: "Public Verify", icon: Search },
+  { label: "Issuer directory", icon: Building2 },
 ];
 
-const PORTAL_PATHS = ["/issuer", "/wallet", "/verifier", "/verify"] as const;
+const PORTAL_PATHS = ["/issuer", "/wallet", "/verifier", "/verify", "/directory"] as const;
 
 /** Live (empty basePath) or demo (`/demo`) portal nav items. */
 export function getAppNavItems(basePath: "" | "/demo" = ""): NavItem[] {

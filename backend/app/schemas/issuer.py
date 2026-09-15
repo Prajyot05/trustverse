@@ -6,7 +6,9 @@ class IssuerRegistrationRequest(BaseModel):
     did: str
     wallet_address: str
     name: str
-    metadata_json: Dict[str, Any]
+    metadata_json: Dict[str, Any] = {}
+    domain: Optional[str] = None
+    accreditation: Optional[str] = None
 
 class IssuerResponse(BaseModel):
     did: str
@@ -15,3 +17,6 @@ class IssuerResponse(BaseModel):
     is_active: bool
     registered_at: datetime
     metrics: Dict[str, int]
+    domain: Optional[str] = None
+    verified: bool = False
+    accreditation: Optional[str] = None

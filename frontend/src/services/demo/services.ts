@@ -17,6 +17,7 @@ import type {
   VerifyRequest,
 } from "../types";
 import { UNIVERSITY_DID } from "./personas";
+import { createDemoProduct } from "../product-demo";
 import {
   ensureDemoSeeded,
   useDemoStore,
@@ -241,6 +242,12 @@ function createDemoApi(): ApiServices {
         threshold: thresholdScaled,
         threshold_display: params.threshold,
         status: "pending",
+        holder_email: params.holder_email,
+        holder_name: params.holder_name,
+        predicate: params.predicate,
+        predicate_params: params.predicate_params,
+        template_label: params.template_label,
+        expires_at: new Date(Date.now() + (params.expires_in_hours ?? 72) * 3600_000).toISOString(),
       });
       return { id: req.id, wallet_deep_link: req.wallet_deep_link };
     },
@@ -417,6 +424,7 @@ export function createDemoServices(): TrustVerseServices {
     api: createDemoApi(),
     chain: createDemoChain(),
     proofs: createDemoProofs(),
+    product: createDemoProduct(),
   };
 }
 

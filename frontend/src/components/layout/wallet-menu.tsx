@@ -22,7 +22,7 @@ import {
  */
 export function WalletMenu() {
   const { mode } = useServices();
-  const { address, did, connect, disconnect, isConnecting } = useIdentity();
+  const { address, did, connect, disconnect, isConnecting, sessionKind } = useIdentity();
   const [copied, setCopied] = React.useState(false);
 
   if (mode === "demo") {
@@ -31,10 +31,12 @@ export function WalletMenu() {
 
   if (!address) {
     return (
-      <Button onClick={connect} disabled={isConnecting} size="sm">
-        <Wallet className="size-4" />
-        {isConnecting ? "Connecting…" : "Connect wallet"}
-      </Button>
+      <div className="flex items-center gap-1.5">
+        <Button onClick={connect} disabled={isConnecting} size="sm">
+          <Wallet className="size-4" />
+          {isConnecting ? "Connecting…" : "Connect"}
+        </Button>
+      </div>
     );
   }
 
@@ -59,7 +61,9 @@ export function WalletMenu() {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
-        <DropdownMenuLabel>Connected identity</DropdownMenuLabel>
+        <DropdownMenuLabel>
+          {sessionKind === "embedded" ? "Passkey wallet" : "Connected identity"}
+        </DropdownMenuLabel>
         <div className="px-1.5 pb-1.5">
           <p className="truncate font-mono text-xs text-muted-foreground">{did}</p>
         </div>

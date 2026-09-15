@@ -3,6 +3,7 @@
 import * as React from "react";
 import { didFromAddress } from "@/lib/contracts";
 import { useWallet } from "@/store/useWallet";
+import { EXPECTED_CHAIN_ID } from "@/lib/network";
 import { createLiveServices } from "./live";
 import { createDemoServices } from "./demo/services";
 import { ensureDemoSeeded, useDemoStore } from "./demo/store";
@@ -62,6 +63,9 @@ export function useIdentity(): IdentityState {
       label: persona?.label ?? null,
       signer: null,
       isConnecting: false,
+      chainId: EXPECTED_CHAIN_ID,
+      sessionKind: "demo",
+      isWrongNetwork: false,
       connect: async () => {
         // PersonaPicker handles selection; no-op fallback.
       },
@@ -73,10 +77,19 @@ export function useIdentity(): IdentityState {
   return {
     address: wallet.address,
     did: wallet.address ? didFromAddress(wallet.address) : null,
-    label: null,
+    label: wallet.sessionKind === "embedded" ? "Passkey wallet" : null,
     signer: wallet.signer,
     isConnecting: wallet.isConnecting,
+    chainId: wallet.chainId,
+    sessionKind: wallet.sessionKind,
+    isWrongNetwork: Boolean(
+      wallet.sessionKind === "metamask" &&
+        wallet.chainId &&
+        wallet.chainId !== EXPECTED_CHAIN_ID
+    ),
     connect: wallet.connect,
+    connectEmbedded: wallet.connectEmbedded,
+    switchNetwork: wallet.switchNetwork,
     disconnect: wallet.disconnect,
   };
 }

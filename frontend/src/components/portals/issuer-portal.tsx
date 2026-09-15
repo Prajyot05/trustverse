@@ -7,6 +7,9 @@ import {
   Loader2,
   ShieldAlert,
   Trash2,
+  Upload,
+  ScrollText,
+  Users,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
@@ -33,8 +36,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { VerifiedBadge } from "@/components/data/verified-badge";
+import type { StaffMember, TrustEventRow } from "@/services/types";
 
-type IssuerSection = "overview" | "issue";
+type IssuerSection = "overview" | "issue" | "bulk" | "audit";
 
 const SECTION_OPTIONS: Array<{
   id: IssuerSection;
@@ -53,6 +58,18 @@ const SECTION_OPTIONS: Array<{
     title: "Issue credential",
     description: "Create a degree credential and anchor it on-chain",
     icon: FilePlus2,
+  },
+  {
+    id: "bulk",
+    title: "Bulk import",
+    description: "Issue a graduating class from a CSV",
+    icon: Upload,
+  },
+  {
+    id: "audit",
+    title: "Audit & staff",
+    description: "Activity log, staff roles, API keys",
+    icon: ScrollText,
   },
 ];
 
@@ -133,8 +150,8 @@ function RevokeAction({
 }
 
 export function IssuerPortal() {
-  const { mode, api, chain } = useServices();
-  const { address, did, signer } = useIdentity();
+  const { mode, api, chain, product } = useServices();
+  const { address, did, signer, sessionKind } = useIdentity();
   const [isIssuing, setIsIssuing] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(true);
@@ -142,9 +159,18 @@ export function IssuerPortal() {
   const [issuerProfile, setIssuerProfile] = useState<IssuerProfile | null>(null);
   const [credentials, setCredentials] = useState<IssuedCredential[]>([]);
   const [institutionName, setInstitutionName] = useState("TrustVerse University");
+  const [domain, setDomain] = useState("");
+  const [events, setEvents] = useState<TrustEventRow[]>([]);
+  const [staff, setStaff] = useState<StaffMember[]>([]);
+  const [csvText, setCsvText] = useState("email,degree,date,cgpa\nalice@uni.edu,Bachelor of Computer Engineering,2026-05-15,8.9");
+  const [staffDid, setStaffDid] = useState("");
+  const [staffRole, setStaffRole] = useState("registrar");
+  const [apiKeyName, setApiKeyName] = useState("SIS integration");
+  const [webhookUrl, setWebhookUrl] = useState("https://example.edu/hooks/trustverse");
 
   const [formData, setFormData] = useState({
     holderDid: "",
+    holderEmail: "",
     degreeName: "",
     graduationDate: "",
     cgpa: "",
@@ -176,6 +202,10 @@ export function IssuerPortal() {
     Promise.all([fetchCredentials(), fetchProfile()]).finally(() =>
       setIsLoadingData(false)
     );
+    if (issuerDid) {
+      product.listEvents(issuerDid).then(setEvents).catch(() => setEvents([]));
+      product.listStaff(issuerDid).then(setStaff).catch(() => setStaff([]));
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [address]);
 
@@ -192,7 +222,7 @@ export function IssuerPortal() {
         did: issuerDid,
         wallet_address: address,
         name: institutionName,
-        metadata_json: { type: "university" },
+        metadata_json: { type: "university", domain },
       });
       await fetchProfile();
       toast.success("Issuer registered", {
@@ -227,15 +257,23 @@ export function IssuerPortal() {
           date: formData.graduationDate,
           cgpa: parseFloat(formData.cgpa),
         },
+        holder_email: formData.holderEmail || undefined,
         issuer_wallet_address: address,
       });
 
-      const receipt = await chain.anchorCredential(
-        issued.credential_hash,
-        issued.poseidon_commitment,
-        issuerDid,
-        signer
-      );
+      const receipt =
+        mode === "live" && sessionKind === "embedded"
+          ? await product.relayAnchor({
+              credential_hash: issued.credential_hash,
+              poseidon_commitment: issued.poseidon_commitment,
+              issuer_did: issuerDid,
+            })
+          : await chain.anchorCredential(
+              issued.credential_hash,
+              issued.poseidon_commitment,
+              issuerDid,
+              signer
+            );
 
       await api.markAnchored(issued.credential_hash, receipt.hash);
 
@@ -245,7 +283,7 @@ export function IssuerPortal() {
             ? `Simulated tx confirmed in block ${receipt.blockNumber}.`
             : `Confirmed in block ${receipt.blockNumber}.`,
       });
-      setFormData({ holderDid: "", degreeName: "", graduationDate: "", cgpa: "" });
+      setFormData({ holderDid: "", holderEmail: "", degreeName: "", graduationDate: "", cgpa: "" });
       fetchCredentials();
     } catch (e) {
       console.error(e);
@@ -285,7 +323,10 @@ export function IssuerPortal() {
         description="Register your institution once, then issue and manage verifiable credentials."
         actions={
           issuerProfile ? (
-            <StatusBadge status="registered" label={`Registered · ${issuerProfile.name}`} />
+            <VerifiedBadge
+              verified={issuerProfile.verified}
+              name={issuerProfile.name}
+            />
           ) : (
             <StatusBadge status="unregistered" />
           )
@@ -341,6 +382,12 @@ export function IssuerPortal() {
               placeholder="Institution name"
               aria-label="Institution name"
             />
+            <Input
+              value={domain}
+              onChange={(e) => setDomain(e.target.value)}
+              placeholder="university.edu (optional)"
+              aria-label="Institution domain"
+            />
             <Button onClick={handleRegister} disabled={isRegistering}>
               {isRegistering && <Loader2 className="size-4 animate-spin" />}
               {mode === "demo" ? "Register (simulated)" : "Register on-chain"}
@@ -352,7 +399,7 @@ export function IssuerPortal() {
       <div className="mt-8 flex flex-col gap-6">
         <div>
           <p className="mb-3 text-sm font-medium text-foreground">What do you want to do?</p>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2" role="tablist" aria-label="Issuer sections">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4" role="tablist" aria-label="Issuer sections">
             {SECTION_OPTIONS.map((option) => {
               const Icon = option.icon;
               const selected = section === option.id;
@@ -460,7 +507,7 @@ export function IssuerPortal() {
               </div>
             </div>
           </div>
-        ) : (
+        ) : section === "issue" ? (
           <Card className="max-w-xl gap-5 p-6 sm:p-8" role="tabpanel">
             <div>
               <h2 className="font-heading text-xl font-semibold text-foreground">
@@ -530,6 +577,20 @@ export function IssuerPortal() {
                   />
                 </div>
               </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="holder-email" className="text-sm">
+                  Holder email (optional)
+                </Label>
+                <Input
+                  id="holder-email"
+                  type="email"
+                  placeholder="student@university.edu"
+                  value={formData.holderEmail}
+                  onChange={(e) =>
+                    setFormData({ ...formData, holderEmail: e.target.value })
+                  }
+                />
+              </div>
               {!issuerProfile && (
                 <p className="text-sm text-warning">
                   Register your institution above before issuing credentials.
@@ -541,6 +602,156 @@ export function IssuerPortal() {
               </Button>
             </form>
           </Card>
+        ) : section === "bulk" ? (
+          <Card className="max-w-2xl gap-4 p-6" role="tabpanel">
+            <h2 className="font-heading text-xl font-semibold">Bulk import a graduating class</h2>
+            <p className="text-sm text-muted-foreground">
+              CSV columns: email, degree, date, cgpa. Students receive claim invitations.
+            </p>
+            <textarea
+              className="min-h-40 w-full rounded-lg border border-border bg-background p-3 font-mono text-xs"
+              value={csvText}
+              onChange={(e) => setCsvText(e.target.value)}
+            />
+            <Button
+              type="button"
+              disabled={!issuerProfile || isIssuing}
+              onClick={async () => {
+                const lines = csvText.trim().split("\n").slice(1);
+                const rows = lines
+                  .map((line) => line.split(",").map((c) => c.trim()))
+                  .filter((c) => c.length >= 4)
+                  .map((c) => ({
+                    holder_email: c[0],
+                    degree: c[1],
+                    date: c[2],
+                    cgpa: parseFloat(c[3]),
+                  }));
+                setIsIssuing(true);
+                try {
+                  const result = await product.batchIssue({
+                    issuer_did: issuerDid,
+                    issuer_wallet_address: address,
+                    rows,
+                  });
+                  toast.success(`Issued ${result.count} credentials`);
+                  fetchCredentials();
+                } catch (e) {
+                  toast.error(e instanceof Error ? e.message : "Bulk issue failed");
+                } finally {
+                  setIsIssuing(false);
+                }
+              }}
+            >
+              {isIssuing && <Loader2 className="size-4 animate-spin" />}
+              Issue & send claim emails
+            </Button>
+          </Card>
+        ) : (
+          <div className="flex flex-col gap-6" role="tabpanel">
+            {issuerProfile && !issuerProfile.verified && (
+              <Card className="gap-3 p-5">
+                <h3 className="font-heading font-semibold">Verify your domain</h3>
+                <p className="text-sm text-muted-foreground">
+                  Bind did:web to your institution so verifiers see a trust badge.
+                </p>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="university.edu"
+                    value={domain}
+                    onChange={(e) => setDomain(e.target.value)}
+                  />
+                  <Button
+                    type="button"
+                    onClick={async () => {
+                      await product.verifyIssuerDomain(issuerDid, domain, "Self-attested");
+                      toast.success("Domain verified");
+                      fetchProfile();
+                    }}
+                  >
+                    Verify
+                  </Button>
+                </div>
+              </Card>
+            )}
+            <Card className="gap-3 p-5">
+              <h3 className="flex items-center gap-2 font-heading font-semibold">
+                <Users className="size-4" /> Staff roles
+              </h3>
+              {staff.map((s) => (
+                <p key={s.id} className="text-sm">
+                  {s.role} · {s.member_did} {s.email ? `· ${s.email}` : ""}
+                </p>
+              ))}
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Input placeholder="Staff DID" value={staffDid} onChange={(e) => setStaffDid(e.target.value)} />
+                <select
+                  className="h-9 rounded-lg border border-border bg-background px-2 text-sm"
+                  value={staffRole}
+                  onChange={(e) => setStaffRole(e.target.value)}
+                >
+                  <option value="admin">admin</option>
+                  <option value="registrar">registrar</option>
+                  <option value="viewer">viewer</option>
+                </select>
+                <Button
+                  type="button"
+                  onClick={async () => {
+                    await product.addStaff({
+                      issuer_did: issuerDid,
+                      member_did: staffDid,
+                      role: staffRole,
+                    });
+                    setStaff(await product.listStaff(issuerDid));
+                    setStaffDid("");
+                  }}
+                >
+                  Add
+                </Button>
+              </div>
+            </Card>
+            <Card className="gap-3 p-5">
+              <h3 className="font-heading font-semibold">API keys & webhooks</h3>
+              <div className="flex gap-2">
+                <Input value={apiKeyName} onChange={(e) => setApiKeyName(e.target.value)} />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={async () => {
+                    const key = await product.createApiKey(issuerDid, apiKeyName);
+                    toast.success("API key created", { description: key.key });
+                  }}
+                >
+                  Create key
+                </Button>
+              </div>
+              <div className="flex gap-2">
+                <Input value={webhookUrl} onChange={(e) => setWebhookUrl(e.target.value)} />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={async () => {
+                    await product.createWebhook({ owner_did: issuerDid, url: webhookUrl });
+                    toast.success("Webhook registered");
+                  }}
+                >
+                  Add webhook
+                </Button>
+              </div>
+            </Card>
+            <div>
+              <h3 className="mb-2 font-heading text-lg font-semibold">Audit log</h3>
+              {events.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No events yet.</p>
+              ) : (
+                events.slice(0, 20).map((ev) => (
+                  <p key={ev.id} className="border-b border-border py-2 text-sm text-muted-foreground">
+                    {ev.event_type} · {ev.timestamp?.replace("T", " ").slice(0, 19)} · {ev.actor_did}
+                  </p>
+                ))
+              )}
+            </div>
+          </div>
         )}
       </div>
     </div>

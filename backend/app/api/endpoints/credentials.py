@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from typing import Any
 from sqlalchemy.orm import Session
 from datetime import datetime
+import secrets
 
 from app.schemas.credential import (
     CredentialIssueRequest,
@@ -13,6 +14,7 @@ from app.services.credential_service import issue_credential
 from app.core.crypto import holder_encryption_key, decrypt_credential
 from app.core.revocation_tree import mark_revoked, proof_for_nullifier, current_root
 from app.core.chain import read_anchor, read_revoked
+from app.core.notify import notify
 from app.db.session import get_db
 from app.db.models import CredentialRecord, Issuer
 
@@ -36,8 +38,10 @@ def issue_new_credential(req: CredentialIssueRequest, db: Session = Depends(get_
             issuer_wallet_address=req.issuer_wallet_address,
             issuer_private_key=req.issuer_private_key,
             holder_shared_key=shared_key,
+            holder_pubkey_hex=req.holder_pubkey,
         )
 
+        claim_token = secrets.token_urlsafe(16) if req.claim_invite else None
         record = CredentialRecord(
             hash=result["credentialHash"],
             issuer_did=req.issuer_did,
@@ -50,9 +54,24 @@ def issue_new_credential(req: CredentialIssueRequest, db: Session = Depends(get_
             claims_hash=result["claimsHash"],
             salt=result["salt"],
             nullifier=result["nullifier"],
+            holder_email=req.holder_email,
+            claim_token=claim_token,
+            template_id=req.template_id,
+            enc_scheme=result.get("encScheme"),
+            holder_pubkey=req.holder_pubkey,
         )
         db.add(record)
         db.commit()
+
+        if req.holder_email or req.holder_did:
+            notify(
+                recipient_did=req.holder_did,
+                title="A new credential is ready to claim",
+                body=f"{req.issuer_did} issued you a credential. Open your wallet to view it.",
+                kind="credential_issued",
+                href=f"/wallet?claim={claim_token}" if claim_token else "/wallet",
+                email_to=req.holder_email,
+            )
 
         return CredentialIssueResponse(
             status=result["status"],
@@ -93,10 +112,14 @@ def _decorate(record: CredentialRecord, include_plaintext: bool = False) -> dict
     payload["on_chain_revoked"] = read_revoked(record.hash)
     if include_plaintext and record.encrypted_blob and record.holder_did:
         try:
-            key = holder_encryption_key(record.holder_did)
+            key = holder_encryption_key(record.holder_did, record.holder_pubkey)
             payload["credential"] = decrypt_credential(record.encrypted_blob, key)
         except Exception:
             payload["credential"] = None
+    payload["holder_email"] = record.holder_email
+    payload["claim_token"] = record.claim_token
+    payload["claimed_at"] = record.claimed_at.isoformat() if record.claimed_at else None
+    payload["enc_scheme"] = record.enc_scheme
     return payload
 
 
@@ -125,6 +148,14 @@ def revoke_credential(req: RevocationRequest, db: Session = Depends(get_db)) -> 
     record.status = "Revoked"
     db.commit()
     root = mark_revoked(int(record.nullifier))
+    notify(
+        recipient_did=record.holder_did,
+        title="A credential was revoked",
+        body=req.details or "Your issuer revoked a credential.",
+        kind="credential_revoked",
+        href="/wallet",
+        email_to=record.holder_email,
+    )
     return {
         "status": "revoked",
         "message": "Credential marked revoked; Merkle root published",

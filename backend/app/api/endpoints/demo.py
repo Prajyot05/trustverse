@@ -28,8 +28,16 @@ def seed_demo(db: Session = Depends(get_db)):
             eth_address="0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
             metadata_json={"demo": True},
             is_active=True,
+            domain="trustverse.university",
+            verified=True,
+            accreditation="NAAC A++",
         )
         db.add(issuer)
+        db.commit()
+    else:
+        issuer.verified = True
+        issuer.domain = issuer.domain or "trustverse.university"
+        issuer.accreditation = issuer.accreditation or "NAAC A++"
         db.commit()
 
     try:

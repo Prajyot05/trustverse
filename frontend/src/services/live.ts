@@ -9,6 +9,7 @@ import {
   groth16ToSolidity,
   type Groth16Proof,
 } from "@/lib/contracts";
+import { createLiveProduct } from "./product-live";
 import type {
   ApiServices,
   AnalysisResult,
@@ -282,5 +283,6 @@ export function createLiveServices(): TrustVerseServices {
     api: createLiveApi(),
     chain: createLiveChain(),
     proofs: createLiveProofs(),
+    product: createLiveProduct(),
   };
 }

@@ -12,6 +12,10 @@ class CredentialIssueRequest(BaseModel):
     # anchor in MetaMask and does not send a private key.
     issuer_private_key: Optional[str] = None
     holder_shared_key_hex: Optional[str] = None
+    holder_email: Optional[str] = None
+    holder_pubkey: Optional[str] = None
+    template_id: Optional[str] = None
+    claim_invite: bool = True
 
 class CredentialIssueResponse(BaseModel):
     status: str
@@ -37,7 +41,13 @@ class VerificationRequestCreate(BaseModel):
     holder_did: Optional[str] = None
     issuer_did: Optional[str] = None
     attribute: str = "cgpa"
-    threshold: float  # e.g. 8.0; stored as cgpaScaled int
+    threshold: float = 0.0  # e.g. 8.0; stored as cgpaScaled int
+    holder_email: Optional[str] = None
+    holder_name: Optional[str] = None
+    expires_in_hours: Optional[int] = 72
+    predicate: str = "cgpa_gte"
+    predicate_params: Optional[Dict[str, Any]] = None
+    template_label: Optional[str] = None
 
 class ProofIndexRequest(BaseModel):
     request_id: int
@@ -46,3 +56,5 @@ class ProofIndexRequest(BaseModel):
     nonrev_tx_hash: Optional[str] = None
     block_number: Optional[int] = None
     result: str = "pass"
+    fail_reason: Optional[str] = None
+    public_signals: Optional[list] = None

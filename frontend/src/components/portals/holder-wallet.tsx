@@ -1,6 +1,6 @@
 "use client";
 
-import { Fingerprint, Loader2 } from "lucide-react";
+import { Fingerprint, Loader2, QrCode, Share2, Download } from "lucide-react";
 import { useState, useEffect, Suspense, useCallback } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
@@ -21,6 +21,11 @@ import { HashChip } from "@/components/data/hash-chip";
 import { CredentialCard } from "@/components/credentials/credential-card";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { ProofStepper, type ProofStep } from "@/components/proof/proof-stepper";
+import { TechnicalDetails } from "@/components/data/technical-details";
+import { PredicateExplain } from "@/components/predicates/predicate-picker";
+import { getPredicate, evaluateLocalPredicate, failReasonLabel } from "@/lib/predicates";
+import type { TrustEventRow } from "@/services/types";
+import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -35,7 +40,7 @@ import {
 type ProofStage = "idle" | "claim" | "nonrev" | "submitting" | "done" | "error";
 
 function HolderWalletInner() {
-  const { mode, api, chain, proofs } = useServices();
+  const { mode, api, chain, proofs, product, basePath } = useServices();
   const { address, did, signer } = useIdentity();
   const router = useRouter();
   const pathname = usePathname();
@@ -48,6 +53,8 @@ function HolderWalletInner() {
   const [isLoadingData, setIsLoadingData] = useState(true);
   const [credentials, setCredentials] = useState<HolderCredential[]>([]);
   const [pendingRequests, setPendingRequests] = useState<VerifyRequest[]>([]);
+  const [history, setHistory] = useState<VerifyRequest[]>([]);
+  const [activity, setActivity] = useState<TrustEventRow[]>([]);
 
   const holderDid = did ?? "";
   const isBusy = stage === "claim" || stage === "nonrev" || stage === "submitting";
@@ -69,6 +76,16 @@ function HolderWalletInner() {
     if (!holderDid) return;
     const all = await api.listRequests({ holderDid });
     setPendingRequests(all.filter((r) => r.status === "pending"));
+    setHistory(all.filter((r) => r.status !== "pending"));
+  };
+
+  const fetchActivity = async () => {
+    if (!holderDid) return;
+    try {
+      setActivity(await product.listEvents(holderDid));
+    } catch {
+      setActivity([]);
+    }
   };
 
   const openFromDeepLink = async (requestId: string) => {
@@ -97,7 +114,7 @@ function HolderWalletInner() {
     let cancelled = false;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- reset loading before async wallet fetch
     setIsLoadingData(true);
-    Promise.all([fetchCredentials(), fetchPendingRequests()])
+    Promise.all([fetchCredentials(), fetchPendingRequests(), fetchActivity()])
       .then(async () => {
         if (cancelled || !requestIdParam) return;
         await openFromDeepLink(requestIdParam);
@@ -130,6 +147,19 @@ function HolderWalletInner() {
     try {
       const threshold = String(activeRequest.threshold);
 
+      const predicate = activeRequest.predicate || "cgpa_gte";
+      const params = {
+        threshold: Number(activeRequest.threshold_display ?? activeRequest.threshold / 100),
+        ...(activeRequest.predicate_params as Record<string, unknown> | undefined),
+      };
+      const local = evaluateLocalPredicate(
+        predicate,
+        params,
+        cred.credential?.credentialSubject,
+        cred.issuer_did,
+        cred.status
+      );
+
       setStage("claim");
       const claimBundle = await proofs.proveClaim({
         credentialRoot: c.credentialRoot,
@@ -155,6 +185,24 @@ function HolderWalletInner() {
         pathElements: revData.pathElements,
       });
 
+      const claimValid =
+        mode === "demo" || claimBundle.publicSignals[0] === "1";
+      const nonRevValid =
+        mode === "demo" || nonRevBundle.publicSignals[0] === "1";
+      const revoked = Boolean(revData.revoked) || cred.status !== "Active";
+
+      let pass: boolean;
+      let failReason: string | undefined;
+      if (mode === "demo") {
+        pass = demoWouldPass(cred, Number(activeRequest.threshold)) && local.pass;
+        failReason = pass ? undefined : revoked ? "revoked" : local.reason;
+      } else {
+        pass = claimValid && nonRevValid && !revoked && local.pass;
+        if (revoked) failReason = "revoked";
+        else if (!claimValid || !local.pass) failReason = local.reason || "threshold_miss";
+        else if (!nonRevValid) failReason = "revoked";
+      }
+
       setStage("submitting");
       const claimReceipt = await chain.verifyClaimProof(cred.hash, claimBundle, signer);
       const nonRevReceipt = await chain.verifyNonRevocationProof(
@@ -163,11 +211,6 @@ function HolderWalletInner() {
         signer
       );
 
-      const pass =
-        mode === "demo"
-          ? demoWouldPass(cred, Number(activeRequest.threshold))
-          : true;
-
       await api.submitProof({
         request_id: activeRequest.id,
         credential_hash: cred.hash,
@@ -175,6 +218,13 @@ function HolderWalletInner() {
         nonrev_tx_hash: nonRevReceipt.hash,
         block_number: claimReceipt.blockNumber,
         result: pass ? "pass" : "fail",
+        fail_reason: failReason,
+      });
+
+      await product.createPresentation({
+        holder_did: holderDid,
+        credential_hash: cred.hash,
+        request_id: activeRequest.id,
       });
 
       setStage("idle");
@@ -182,17 +232,18 @@ function HolderWalletInner() {
       setActiveRequest(null);
       clearRequestParam();
       await fetchPendingRequests();
+      await fetchActivity();
 
       toast.success(
         pass
           ? mode === "demo"
             ? "Proofs verified (simulated)"
             : "Proofs verified on-chain"
-          : "Proof submitted — threshold not met",
+          : failReasonLabel(failReason),
         {
           description: pass
-            ? "The verifier can now see the result."
-            : "The credential did not satisfy the requested threshold or is revoked.",
+            ? "The verifier can now see a yes/no result. They did not learn your grades."
+            : failReasonLabel(failReason),
         }
       );
     } catch (e) {
@@ -270,13 +321,19 @@ function HolderWalletInner() {
       />
 
       <Dialog open={showProofModal} onOpenChange={closeModal}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Verification request #{activeRequest?.id}</DialogTitle>
+            <DialogTitle>
+              {activeRequest?.template_label || `Request #${activeRequest?.id}`}
+            </DialogTitle>
             <DialogDescription>
-              Prove CGPA ≥ {activeRequest?.threshold_display} without revealing your transcript.
+              Review what {formatDid(activeRequest?.verifier_did || "")} will learn before you prove.
             </DialogDescription>
           </DialogHeader>
+
+          {activeRequest && (
+            <PredicateExplain def={getPredicate(activeRequest.predicate)} />
+          )}
 
           <ProofStepper steps={steps} className="py-1" />
 
@@ -295,7 +352,7 @@ function HolderWalletInner() {
                   ? mode === "demo"
                     ? "Submitting (simulated)…"
                     : "Submitting on-chain…"
-                  : "Generate & submit proofs"}
+                  : "Approve and prove"}
           </Button>
         </DialogContent>
       </Dialog>
@@ -304,7 +361,13 @@ function HolderWalletInner() {
         <div className="flex w-full flex-col gap-6 lg:w-72 lg:shrink-0">
           <Card className="items-center gap-4 p-6 text-center">
             <QRPanel value={holderDid} size={128} />
-            <HashChip value={holderDid} label="Holder DID" size="md" className="max-w-full" />
+            <HashChip value={holderDid} label="Your ID" size="md" className="max-w-full" />
+            <Button asChild variant="outline" size="sm" className="w-full">
+              <Link href={`${basePath}/present`}>
+                <QrCode className="size-3.5" />
+                Present offline
+              </Link>
+            </Button>
           </Card>
 
           <div className="flex flex-col gap-3">
@@ -325,12 +388,32 @@ function HolderWalletInner() {
                   }}
                   className="w-full rounded-xl border border-primary/20 bg-primary/5 p-3 text-left transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
                 >
-                  <p className="text-sm text-foreground">CGPA ≥ {r.threshold_display}</p>
-                  <p className="text-xs text-muted-foreground">Request #{r.id}</p>
+                  <p className="text-sm text-foreground">
+                    {r.template_label || `CGPA ≥ ${r.threshold_display}`}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {formatDid(r.verifier_did || "")} · #{r.id}
+                  </p>
                 </button>
               ))
             )}
           </div>
+
+          {history.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <h3 className="text-sm font-medium text-muted-foreground">Consent ledger</h3>
+              {history.slice(0, 6).map((r) => (
+                <div key={r.id} className="rounded-lg border border-border p-3 text-xs">
+                  <p className="font-medium text-foreground">
+                    {r.template_label || `Request #${r.id}`} · {r.result || r.status}
+                  </p>
+                  <p className="text-muted-foreground">
+                    {formatDid(r.verifier_did || "")} · you disclosed nothing else
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="flex-1">
@@ -346,7 +429,7 @@ function HolderWalletInner() {
             <EmptyState
               icon={<Fingerprint />}
               title="No credentials yet"
-              description={`Ask your university to issue one to ${holderDid}.`}
+              description="When your university issues one, it will appear here. You can also open a claim link from email."
             />
           ) : (
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -365,16 +448,77 @@ function HolderWalletInner() {
                     fields={[
                       { label: "CGPA", value: subj?.cgpa },
                       { label: "Date", value: subj?.date },
-                      { label: "On-chain", value: cred.on_chain?.status ?? "unknown" },
-                      {
-                        label: "Revoked (chain)",
-                        value: cred.on_chain_revoked ? "yes" : "no",
-                      },
                     ]}
                     commitment={cred.poseidon_commitment}
+                    actions={
+                      <div className="flex flex-col gap-2">
+                        <TechnicalDetails
+                          items={[
+                            { label: "Credential hash", value: cred.hash },
+                            { label: "Commitment", value: cred.poseidon_commitment },
+                            { label: "Issuer DID", value: cred.issuer_did },
+                          ]}
+                        />
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={async () => {
+                              const share = await product.createShare({
+                                holder_did: holderDid,
+                                credential_hash: cred.hash,
+                                predicate: "graduated",
+                                label: subj?.degree,
+                                expires_in_hours: 168,
+                              });
+                              const origin = window.location.origin;
+                              await navigator.clipboard.writeText(`${origin}${share.url}`);
+                              toast.success("Share link copied", {
+                                description: "Expires in 7 days. Revoke anytime from activity.",
+                              });
+                            }}
+                          >
+                            <Share2 className="size-3.5" />
+                            Share
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              const blob = new Blob(
+                                [JSON.stringify(cred.credential ?? cred, null, 2)],
+                                { type: "application/json" }
+                              );
+                              const a = document.createElement("a");
+                              a.href = URL.createObjectURL(blob);
+                              a.download = `credential-${cred.hash.slice(0, 10)}.json`;
+                              a.click();
+                            }}
+                          >
+                            <Download className="size-3.5" />
+                            Export VC
+                          </Button>
+                        </div>
+                      </div>
+                    }
                   />
                 );
               })}
+            </div>
+          )}
+
+          {activity.length > 0 && (
+            <div className="mt-10">
+              <h2 className="mb-3 font-heading text-lg font-semibold">Activity</h2>
+              <div className="flex flex-col gap-2">
+                {activity.slice(0, 8).map((ev) => (
+                  <p key={ev.id} className="text-sm text-muted-foreground">
+                    {ev.event_type} · {ev.timestamp?.slice(0, 16)?.replace("T", " ")}
+                  </p>
+                ))}
+              </div>
             </div>
           )}
         </div>

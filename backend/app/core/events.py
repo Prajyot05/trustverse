@@ -1,7 +1,5 @@
-import json
 from typing import Any, Dict
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
 from app.db.session import SessionLocal
 from app.db.models import TrustEvent, EventType
 
@@ -17,12 +15,18 @@ class EventBus:
         """Publish an event to the SQLite database (replaces Redis)"""
         db = SessionLocal()
         try:
+            try:
+                etype = EventType(event.event_type)
+            except ValueError:
+                print(f"Unknown event type {event.event_type}")
+                etype = EventType.ISSUER_REGISTERED
+                event.payload = {**(event.payload or {}), "original_type": event.event_type}
             db_event = TrustEvent(
-                event_type=EventType(event.event_type),
+                event_type=etype,
                 actor_did=event.actor_did,
                 target_did=event.target_did,
                 credential_hash=event.credential_hash,
-                payload=event.payload
+                payload=event.payload,
             )
             db.add(db_event)
             db.commit()
