@@ -2,6 +2,6 @@
 
 import { HolderWallet } from "@/components/portals/holder-wallet";
 
-export default function WalletPage() {
+export default function DemoWalletPage() {
   return <HolderWallet />;
 }

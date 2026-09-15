@@ -108,8 +108,10 @@ def get_holder_credentials(holder_did: str, db: Session = Depends(get_db)) -> An
 
 @router.get("/issuer/{issuer_did}")
 def get_issuer_credentials(issuer_did: str, db: Session = Depends(get_db)) -> Any:
+    # Issuers already authored these credentials; surface plaintext so the
+    # portal can show degree / holder context instead of hashes alone.
     records = db.query(CredentialRecord).filter(CredentialRecord.issuer_did == issuer_did).all()
-    return [_decorate(r, include_plaintext=False) for r in records]
+    return [_decorate(r, include_plaintext=True) for r in records]
 
 
 @router.post("/revoke")

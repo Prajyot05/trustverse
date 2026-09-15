@@ -13,6 +13,7 @@ interface HashChipProps {
   end?: number;
   copyable?: boolean;
   className?: string;
+  size?: "sm" | "md";
 }
 
 /**
@@ -26,6 +27,7 @@ export function HashChip({
   end = 6,
   copyable = true,
   className,
+  size = "sm",
 }: HashChipProps) {
   const [copied, setCopied] = React.useState(false);
 
@@ -43,13 +45,17 @@ export function HashChip({
   return (
     <span
       className={cn(
-        "inline-flex max-w-full items-center gap-1.5 rounded-md border border-border bg-muted/50 px-2 py-1 font-mono text-xs text-foreground/80",
+        "inline-flex max-w-full items-center gap-2 rounded-lg border border-border bg-muted/50 font-mono text-foreground/90",
+        size === "sm" && "px-2.5 py-1.5 text-xs",
+        size === "md" && "px-3 py-2 text-sm",
         className
       )}
       title={value}
     >
       {label && (
-        <span className="text-muted-foreground/70 select-none">{label}</span>
+        <span className="shrink-0 font-sans text-[0.8125rem] font-medium tracking-normal text-muted-foreground select-none">
+          {label}
+        </span>
       )}
       <span className="truncate">{truncateMiddle(value, start, end)}</span>
       {copyable && (
@@ -57,12 +63,12 @@ export function HashChip({
           type="button"
           onClick={handleCopy}
           aria-label={`Copy ${label ?? "value"} to clipboard`}
-          className="shrink-0 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 rounded-sm"
+          className="shrink-0 rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
         >
           {copied ? (
-            <Check className="size-3" />
+            <Check className={size === "md" ? "size-4" : "size-3.5"} />
           ) : (
-            <Copy className="size-3" />
+            <Copy className={size === "md" ? "size-4" : "size-3.5"} />
           )}
         </button>
       )}

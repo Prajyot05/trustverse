@@ -14,12 +14,16 @@ interface CredentialCardField {
 interface CredentialCardProps {
   /** "detail" — holder wallet tile. "row" — compact issuer dashboard row. */
   variant?: "detail" | "row";
+  /** Primary human-readable title (degree name, credential type). */
   title?: string;
+  /** Secondary line (holder name / issuer). */
   subtitle?: string;
   hash: string;
   status: StatusKind;
   fields?: CredentialCardField[];
   commitment?: string;
+  /** Technical identifiers shown under the title in row variant. */
+  meta?: Array<{ label: string; value: string }>;
   actions?: React.ReactNode;
   className?: string;
 }
@@ -37,23 +41,48 @@ export function CredentialCard({
   status,
   fields = [],
   commitment,
+  meta,
   actions,
   className,
 }: CredentialCardProps) {
   if (variant === "row") {
+    const displayTitle = title || "Academic credential";
     return (
-      <Card className={cn("flex-row items-center gap-4 p-4", className)}>
-        <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-foreground">
-          <GraduationCap className="size-4" />
+      <Card
+        className={cn(
+          "flex-col gap-3 p-4 sm:flex-row sm:items-center sm:gap-4 sm:p-5",
+          className
+        )}
+      >
+        <div className="flex min-w-0 flex-1 items-start gap-3 sm:items-center">
+          <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-accent text-accent-foreground">
+            <GraduationCap className="size-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <h3 className="font-heading text-base font-semibold text-foreground">
+                {displayTitle}
+              </h3>
+              <StatusBadge status={status} className="sm:hidden" />
+            </div>
+            {subtitle && (
+              <p className="mt-0.5 text-sm text-muted-foreground">{subtitle}</p>
+            )}
+            <div className="mt-2 flex flex-wrap gap-2">
+              {(meta ?? [{ label: "Credential hash", value: hash }]).map((item) => (
+                <HashChip
+                  key={item.label}
+                  value={item.value}
+                  label={item.label}
+                  start={6}
+                  end={4}
+                />
+              ))}
+            </div>
+          </div>
         </div>
-        <div className="min-w-0 flex-1">
-          <p className="truncate font-mono text-xs text-foreground/80">{hash}</p>
-          {subtitle && (
-            <p className="truncate text-xs text-muted-foreground">{subtitle}</p>
-          )}
-        </div>
-        <div className="flex shrink-0 items-center gap-3">
-          <StatusBadge status={status} />
+        <div className="flex shrink-0 items-center justify-between gap-3 sm:justify-end">
+          <StatusBadge status={status} className="hidden sm:inline-flex" />
           {actions}
         </div>
       </Card>
@@ -89,7 +118,7 @@ export function CredentialCard({
 
       {commitment && (
         <div className="px-6">
-          <HashChip value={commitment} label="commitment" className="w-full" />
+          <HashChip value={commitment} label="Commitment" className="w-full" />
         </div>
       )}
 

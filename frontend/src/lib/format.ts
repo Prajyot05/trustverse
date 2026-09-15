@@ -21,6 +21,19 @@ export function formatDid(did: string, start = 6, end = 4): string {
   return parts.join(":");
 }
 
+/**
+ * Short wallet/DID fallback when no human name is known
+ * (e.g. live mode without a directory).
+ */
+export function shortHolderLabel(did: string): string {
+  if (!did) return "Unknown holder";
+  const addr = did.includes(":") ? (did.split(":").pop() ?? did) : did;
+  if (addr.startsWith("0x") && addr.length >= 10) {
+    return `Holder ${truncateMiddle(addr, 6, 4)}`;
+  }
+  return formatDid(did, 8, 6);
+}
+
 /** Formats a unix (seconds) timestamp into a readable local date/time string. */
 export function formatTimestamp(unixSeconds: number): string {
   if (!unixSeconds) return "—";

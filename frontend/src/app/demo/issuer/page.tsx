@@ -2,6 +2,6 @@
 
 import { IssuerPortal } from "@/components/portals/issuer-portal";
 
-export default function IssuerPage() {
+export default function DemoIssuerPage() {
   return <IssuerPortal />;
 }

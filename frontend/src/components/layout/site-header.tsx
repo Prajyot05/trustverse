@@ -6,7 +6,7 @@ import { Menu } from "lucide-react";
 import { Logo } from "@/components/brand/logo";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { WalletMenu } from "@/components/layout/wallet-menu";
-import { APP_NAV_ITEMS } from "@/components/layout/nav-config";
+import { APP_NAV_ITEMS, DEMO_NAV_LINK } from "@/components/layout/nav-config";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -15,9 +15,10 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 
-/** Marketing site header: logo, portal links, theme toggle, wallet control. */
+/** Marketing site header: logo, portal links, demo link, theme toggle, wallet control. */
 export function SiteHeader() {
   const [open, setOpen] = React.useState(false);
+  const navItems = [...APP_NAV_ITEMS, DEMO_NAV_LINK];
 
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur-sm">
@@ -27,7 +28,7 @@ export function SiteHeader() {
         </Link>
 
         <nav className="hidden items-center gap-6 text-sm font-medium md:flex">
-          {APP_NAV_ITEMS.map((item) => (
+          {navItems.map((item) => (
             <Link
               key={item.href}
               href={item.href}
@@ -61,7 +62,7 @@ export function SiteHeader() {
                 </SheetTitle>
               </SheetHeader>
               <nav className="flex flex-col gap-1 px-2">
-                {APP_NAV_ITEMS.map((item) => {
+                {navItems.map((item) => {
                   const Icon = item.icon;
                   return (
                     <Link

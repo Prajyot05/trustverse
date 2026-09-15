@@ -2,7 +2,8 @@
 
 import * as React from "react";
 import { Loader2, Wallet } from "lucide-react";
-import { useWallet } from "@/store/useWallet";
+import { useServices, useIdentity, type PersonaRole } from "@/services";
+import { PersonaPicker } from "@/components/demo/persona-picker";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 
@@ -10,15 +11,41 @@ interface WalletGateProps {
   icon?: React.ReactNode;
   title: string;
   description?: string;
+  /** Highlight these roles in the demo persona picker. */
+  suggestedRoles?: PersonaRole[];
 }
 
 /**
- * Single shared "connect your wallet" gate. Replaces the three copies of
- * `if (!address) return ...` that used to live in the issuer, wallet and
- * verifier pages.
+ * Shared gate. In live mode: Connect MetaMask. In demo mode: PersonaPicker.
  */
-export function WalletGate({ icon, title, description }: WalletGateProps) {
-  const { connect, isConnecting } = useWallet();
+export function WalletGate({
+  icon,
+  title,
+  description,
+  suggestedRoles,
+}: WalletGateProps) {
+  const { mode } = useServices();
+  const { connect, isConnecting, selectPersona } = useIdentity();
+
+  if (mode === "demo") {
+    return (
+      <div className="flex min-h-[60vh] flex-col items-center justify-center px-4 py-16">
+        <Card className="flex w-full max-w-lg flex-col items-center gap-6 p-8 sm:p-10">
+          {icon && (
+            <div className="flex size-12 items-center justify-center rounded-full bg-accent text-accent-foreground [&_svg]:size-6">
+              {icon}
+            </div>
+          )}
+          <PersonaPicker
+            suggestedRoles={suggestedRoles}
+            title={title}
+            description={description ?? "Pick a persona to explore this portal."}
+            onSelect={(id) => selectPersona?.(id)}
+          />
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-[60vh] flex-col items-center justify-center px-4 py-16">

@@ -2,6 +2,6 @@
 
 import { VerifierDashboard } from "@/components/portals/verifier-dashboard";
 
-export default function VerifierPage() {
+export default function DemoVerifierPage() {
   return <VerifierDashboard />;
 }

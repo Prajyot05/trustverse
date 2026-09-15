@@ -5,10 +5,15 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Menu } from "lucide-react";
 import { cn } from "cn";
+import { useServices } from "@/services";
 import { Logo } from "@/components/brand/logo";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { WalletMenu } from "@/components/layout/wallet-menu";
-import { APP_NAV_ITEMS, OVERVIEW_NAV_ITEM, type NavItem } from "@/components/layout/nav-config";
+import {
+  getAppNavItems,
+  getOverviewNavItem,
+  type NavItem,
+} from "@/components/layout/nav-config";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -18,7 +23,7 @@ import {
 } from "@/components/ui/sheet";
 
 function isActive(pathname: string, href: string) {
-  if (href === "/") return pathname === "/";
+  if (href === "/" || href === "/demo") return pathname === href;
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
@@ -51,98 +56,116 @@ function NavLink({
   );
 }
 
-function SidebarNav({ pathname, onNavigate }: { pathname: string; onNavigate?: () => void }) {
+function SidebarNav({
+  pathname,
+  basePath,
+  onNavigate,
+}: {
+  pathname: string;
+  basePath: "" | "/demo";
+  onNavigate?: () => void;
+}) {
+  const overview = getOverviewNavItem(basePath);
+  const items = getAppNavItems(basePath);
   return (
     <nav className="flex flex-col gap-1">
-      <NavLink item={OVERVIEW_NAV_ITEM} pathname={pathname} onNavigate={onNavigate} />
+      <NavLink item={overview} pathname={pathname} onNavigate={onNavigate} />
       <div className="my-2 h-px bg-border" />
-      {APP_NAV_ITEMS.map((item) => (
+      {items.map((item) => (
         <NavLink key={item.href} item={item} pathname={pathname} onNavigate={onNavigate} />
       ))}
     </nav>
   );
 }
 
-const NAV_LABELS: Record<string, string> = {
-  "/": "Overview",
-  "/issuer": "Issuer Portal",
-  "/wallet": "Holder Wallet",
-  "/verifier": "Verifier",
-  "/verify": "Public Verify",
-};
-
-function currentSectionLabel(pathname: string) {
-  const match = Object.keys(NAV_LABELS)
-    .filter((href) => href !== "/" && pathname.startsWith(href))
+function currentSectionLabel(pathname: string, basePath: "" | "/demo") {
+  const labels: Record<string, string> = {
+    [basePath || "/"]: basePath === "/demo" ? "Demo home" : "Overview",
+    [`${basePath}/issuer`]: "Issuer Portal",
+    [`${basePath}/wallet`]: "Holder Wallet",
+    [`${basePath}/verifier`]: "Verifier",
+    [`${basePath}/verify`]: "Public Verify",
+  };
+  const match = Object.keys(labels)
+    .filter((href) => href !== "/" && href !== "/demo" && pathname.startsWith(href))
     .sort((a, b) => b.length - a.length)[0];
-  return NAV_LABELS[match ?? pathname] ?? "TrustVerse";
+  return labels[match ?? pathname] ?? (basePath === "/demo" ? "Demo" : "TrustVerse");
 }
 
 interface AppShellProps {
   children: React.ReactNode;
+  banner?: React.ReactNode;
 }
 
-/** Authenticated portal shell: fixed sidebar nav + topbar, mobile sheet nav. */
-export function AppShell({ children }: AppShellProps) {
+/** Portal shell: fixed sidebar nav + topbar, mobile sheet nav. */
+export function AppShell({ children, banner }: AppShellProps) {
   const pathname = usePathname();
+  const { basePath } = useServices();
   const [mobileNavOpen, setMobileNavOpen] = React.useState(false);
 
   return (
-    <div className="flex min-h-screen bg-background">
-      <aside className="hidden w-60 shrink-0 flex-col border-r border-border md:flex">
-        <div className="flex h-16 items-center border-b border-border px-5">
-          <Link href="/" className="focus-visible:outline-none">
-            <Logo />
-          </Link>
-        </div>
-        <div className="flex-1 overflow-y-auto p-3">
-          <SidebarNav pathname={pathname} />
-        </div>
-      </aside>
-
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-40 flex h-16 items-center gap-3 border-b border-border bg-background/95 px-4 backdrop-blur-sm sm:px-6">
-          <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="md:hidden"
-              aria-label="Open navigation menu"
-              onClick={() => setMobileNavOpen(true)}
-            >
-              <Menu className="size-5" />
-            </Button>
-            <SheetContent
-              side="left"
-              className="w-72"
-              onOpenAutoFocus={(e) => e.preventDefault()}
-            >
-              <SheetHeader>
-                <SheetTitle>
-                  <Logo />
-                </SheetTitle>
-              </SheetHeader>
-              <div className="px-2">
-                <SidebarNav pathname={pathname} onNavigate={() => setMobileNavOpen(false)} />
-              </div>
-            </SheetContent>
-          </Sheet>
-
-          <div className="flex items-center gap-2 md:hidden">
-            <Logo showWordmark={false} />
+    <div className="flex min-h-screen flex-col bg-background">
+      {banner}
+      <div className="flex min-h-0 flex-1">
+        <aside className="hidden w-60 shrink-0 flex-col border-r border-border md:flex">
+          <div className="flex h-16 items-center border-b border-border px-5">
+            <Link href={basePath || "/"} className="focus-visible:outline-none">
+              <Logo />
+            </Link>
           </div>
-
-          <p className="hidden text-sm font-medium text-foreground md:block">
-            {currentSectionLabel(pathname)}
-          </p>
-
-          <div className="ml-auto flex items-center gap-2">
-            <ThemeToggle />
-            <WalletMenu />
+          <div className="flex-1 overflow-y-auto p-3">
+            <SidebarNav pathname={pathname} basePath={basePath} />
           </div>
-        </header>
+        </aside>
 
-        <main className="flex-1">{children}</main>
+        <div className="flex min-w-0 flex-1 flex-col">
+          <header className="sticky top-0 z-40 flex h-16 items-center gap-3 border-b border-border bg-background/95 px-4 backdrop-blur-sm sm:px-6">
+            <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="md:hidden"
+                aria-label="Open navigation menu"
+                onClick={() => setMobileNavOpen(true)}
+              >
+                <Menu className="size-5" />
+              </Button>
+              <SheetContent
+                side="left"
+                className="w-72"
+                onOpenAutoFocus={(e) => e.preventDefault()}
+              >
+                <SheetHeader>
+                  <SheetTitle>
+                    <Logo />
+                  </SheetTitle>
+                </SheetHeader>
+                <div className="px-2">
+                  <SidebarNav
+                    pathname={pathname}
+                    basePath={basePath}
+                    onNavigate={() => setMobileNavOpen(false)}
+                  />
+                </div>
+              </SheetContent>
+            </Sheet>
+
+            <div className="flex items-center gap-2 md:hidden">
+              <Logo showWordmark={false} />
+            </div>
+
+            <p className="hidden text-sm font-medium text-foreground md:block">
+              {currentSectionLabel(pathname, basePath)}
+            </p>
+
+            <div className="ml-auto flex items-center gap-2">
+              <ThemeToggle />
+              <WalletMenu />
+            </div>
+          </header>
+
+          <main className="flex-1">{children}</main>
+        </div>
       </div>
     </div>
   );

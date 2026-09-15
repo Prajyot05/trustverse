@@ -3,9 +3,9 @@
 import * as React from "react";
 import { Check, ChevronDown, Copy, LogOut, Wallet } from "lucide-react";
 import { toast } from "sonner";
-import { useWallet } from "@/store/useWallet";
-import { didFromAddress } from "@/lib/contracts";
+import { useServices, useIdentity } from "@/services";
 import { truncateMiddle } from "@/lib/format";
+import { PersonaMenu } from "@/components/demo/persona-menu";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -17,13 +17,17 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 /**
- * Wallet connection control for the app shell topbar. Shows a "Connect
- * wallet" button when disconnected, or a chip with a dropdown (copy
- * address, view DID, disconnect) once connected.
+ * Wallet connection control for the app shell topbar.
+ * In demo mode renders PersonaMenu instead of MetaMask connect.
  */
 export function WalletMenu() {
-  const { address, connect, disconnect, isConnecting } = useWallet();
+  const { mode } = useServices();
+  const { address, did, connect, disconnect, isConnecting } = useIdentity();
   const [copied, setCopied] = React.useState(false);
+
+  if (mode === "demo") {
+    return <PersonaMenu />;
+  }
 
   if (!address) {
     return (
@@ -33,8 +37,6 @@ export function WalletMenu() {
       </Button>
     );
   }
-
-  const did = didFromAddress(address);
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(address);

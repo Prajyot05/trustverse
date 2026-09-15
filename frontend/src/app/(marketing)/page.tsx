@@ -47,8 +47,8 @@ export default function Home() {
               without ever seeing a transcript.
             </p>
             <div className="flex flex-wrap items-center gap-3">
-              <Link href="#demo" className={cn(buttonVariants({ size: "lg" }))}>
-                Run guided demo
+              <Link href="/demo" className={cn(buttonVariants({ size: "lg" }))}>
+                Try the demo
               </Link>
               <Link
                 href="/verifier"
@@ -140,8 +140,22 @@ export default function Home() {
         <PrivacyBlock />
       </section>
 
-      {/* Demo runner */}
+      {/* Demo entry + live seeder for developers */}
       <section id="demo" className="mx-auto w-full max-w-4xl px-4 py-20 sm:px-6 lg:px-8">
+        <div className="mb-6 flex flex-col gap-3 rounded-xl border border-primary/20 bg-primary/5 p-6 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="font-heading text-base font-semibold text-foreground">
+              Interactive demo — no wallet required
+            </p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Walk the full issue → prove → verify story with simulated data under{" "}
+              <code className="text-xs">/demo</code>.
+            </p>
+          </div>
+          <Link href="/demo" className={cn(buttonVariants({ size: "lg" }))}>
+            Open demo mode
+          </Link>
+        </div>
         <DemoRunner />
       </section>
     </div>
