@@ -17,7 +17,7 @@ import type {
   VerifyRequest,
 } from "../types";
 import { UNIVERSITY_DID } from "./personas";
-import { createDemoProduct } from "../product-demo";
+import { createDemoProduct, useProductDemoStore } from "../product-demo";
 import {
   ensureDemoSeeded,
   useDemoStore,
@@ -174,6 +174,17 @@ function createDemoApi(): ApiServices {
         },
       };
       store.addCredential(cred);
+      if (params.holder_did) {
+        useProductDemoStore.getState().pushNotification({
+          recipient_did: params.holder_did,
+          title: "A new credential is ready",
+          body: `${params.credential_subject.degree} was issued to you.`,
+          kind: "credential_issued",
+          href: "/demo/wallet",
+          read: false,
+          created_at: new Date().toISOString(),
+        });
+      }
       return {
         credential_hash: hash,
         poseidon_commitment: poseidon,
@@ -195,10 +206,24 @@ function createDemoApi(): ApiServices {
     async revokeCredential(params) {
       ensureDemoSeeded();
       await delay(700);
+      const cred = useDemoStore
+        .getState()
+        .credentials.find((c) => c.hash === params.credential_hash);
       useDemoStore.getState().updateCredential(params.credential_hash, {
         status: "Revoked",
         on_chain_revoked: true,
       });
+      if (cred?.holder_did) {
+        useProductDemoStore.getState().pushNotification({
+          recipient_did: cred.holder_did,
+          title: "A credential was revoked",
+          body: params.details || "Your issuer revoked a credential.",
+          kind: "credential_revoked",
+          href: "/demo/wallet",
+          read: false,
+          created_at: new Date().toISOString(),
+        });
+      }
     },
 
     async listHolderCredentials(holderDid) {
@@ -249,6 +274,17 @@ function createDemoApi(): ApiServices {
         template_label: params.template_label,
         expires_at: new Date(Date.now() + (params.expires_in_hours ?? 72) * 3600_000).toISOString(),
       });
+      if (params.holder_did) {
+        useProductDemoStore.getState().pushNotification({
+          recipient_did: params.holder_did,
+          title: "Verification request",
+          body: `A verifier asked you to prove: ${params.template_label || params.attribute}.`,
+          kind: "proof_requested",
+          href: `/demo/wallet?request=${req.id}`,
+          read: false,
+          created_at: new Date().toISOString(),
+        });
+      }
       return { id: req.id, wallet_deep_link: req.wallet_deep_link };
     },
 
@@ -278,6 +314,20 @@ function createDemoApi(): ApiServices {
         result: params.result,
         status: params.result === "pass" ? "fulfilled" : "failed",
       });
+      const req = useDemoStore
+        .getState()
+        .requests.find((r) => String(r.id) === String(params.request_id));
+      if (req?.verifier_did) {
+        useProductDemoStore.getState().pushNotification({
+          recipient_did: req.verifier_did,
+          title: "Proof submitted",
+          body: `Request #${req.id} is ${params.result === "pass" ? "verified" : "not verified"}.`,
+          kind: "proof_submitted",
+          href: `/demo/verifier?request=${req.id}`,
+          read: false,
+          created_at: new Date().toISOString(),
+        });
+      }
     },
 
     async publicVerify(hash) {

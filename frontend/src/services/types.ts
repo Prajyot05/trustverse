@@ -248,6 +248,7 @@ export interface ApiServices {
 
 export interface InboxItem {
   id: number | string;
+  recipient_did?: string;
   title: string;
   body?: string;
   kind?: string;

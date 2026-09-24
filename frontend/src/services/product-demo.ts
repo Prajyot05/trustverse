@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { ProductServices, ShareRecord, InboxItem, CredentialTemplate } from "./types";
-import { UNIVERSITY_DID } from "./demo/personas";
+import { ACME_DID, ALICE_DID, BOB_DID, UNIVERSITY_DID } from "./demo/personas";
 
 interface ProductDemoState {
   notifications: InboxItem[];
@@ -28,10 +28,41 @@ export const useProductDemoStore = create<ProductDemoState>()(
       notifications: [
         {
           id: 1,
+          recipient_did: ALICE_DID,
           title: "Acme asked you to prove CGPA ≥ 8.0",
           body: "Open your wallet to review what they will and will not see.",
           kind: "proof_requested",
           href: "/demo/wallet?request=1",
+          read: false,
+          created_at: new Date().toISOString(),
+        },
+        {
+          id: 2,
+          recipient_did: ACME_DID,
+          title: "Waiting for Alice’s proof",
+          body: "Request #1 is pending. You’ll be notified when she submits.",
+          kind: "proof_requested",
+          href: "/demo/verifier?request=1",
+          read: false,
+          created_at: new Date().toISOString(),
+        },
+        {
+          id: 3,
+          recipient_did: BOB_DID,
+          title: "Your credential was revoked",
+          body: "TrustVerse University revoked your degree credential. Proofs will fail non-revocation.",
+          kind: "credential_revoked",
+          href: "/demo/wallet",
+          read: false,
+          created_at: new Date().toISOString(),
+        },
+        {
+          id: 4,
+          recipient_did: UNIVERSITY_DID,
+          title: "Acme requested a verification",
+          body: "An employer asked Alice to prove CGPA ≥ 8.0 against a credential you issued.",
+          kind: "proof_requested",
+          href: "/demo/issuer",
           read: false,
           created_at: new Date().toISOString(),
         },
@@ -57,7 +88,7 @@ export const useProductDemoStore = create<ProductDemoState>()(
           nextId: s.nextId + 1,
         })),
     }),
-    { name: "trustverse-product-demo-v1" }
+    { name: "trustverse-product-demo-v2" }
   )
 );
 
@@ -71,8 +102,10 @@ function nid() {
 export function createDemoProduct(): ProductServices {
   return {
     async listNotifications(did) {
-      void did;
-      return useProductDemoStore.getState().notifications;
+      const needle = did.toLowerCase();
+      return useProductDemoStore
+        .getState()
+        .notifications.filter((n) => (n.recipient_did || "").toLowerCase() === needle);
     },
     async markNotificationRead(id) {
       useProductDemoStore.setState((s) => ({

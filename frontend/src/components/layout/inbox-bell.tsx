@@ -21,7 +21,10 @@ export function InboxBell() {
   const [items, setItems] = React.useState<InboxItem[]>([]);
 
   React.useEffect(() => {
-    if (!did) return;
+    if (!did) {
+      setItems([]);
+      return;
+    }
     let cancelled = false;
     product.listNotifications(did).then((rows) => {
       if (!cancelled) setItems(rows);
