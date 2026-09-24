@@ -4,7 +4,7 @@ from typing import Dict, Any, Optional
 
 from eth_account import Account
 
-from app.core.crypto import encrypt_credential, sign_vc, holder_encryption_key
+from app.core.crypto import encrypt_credential, sign_vc, holder_encryption_key, encryption_scheme
 from app.core.commitment import build_commitment
 from app.core.ipfs import ipfs_storage
 from app.core.events import event_bus, TrustEventPayload
@@ -25,6 +25,7 @@ def issue_credential(
     issuer_wallet_address: str,
     issuer_private_key: Optional[str] = None,
     holder_shared_key: Optional[bytes] = None,
+    holder_pubkey_hex: Optional[str] = None,
 ) -> Dict[str, Any]:
     now = datetime.now(timezone.utc)
     issue_date_unix = int(now.timestamp())
@@ -33,7 +34,7 @@ def issue_credential(
         issuer_wallet_address = Account.from_key(issuer_private_key).address
 
     if holder_shared_key is None:
-        holder_shared_key = holder_encryption_key(holder_did)
+        holder_shared_key = holder_encryption_key(holder_did, holder_pubkey_hex)
 
     commitment = build_commitment(
         holder_did=holder_did,
@@ -117,4 +118,5 @@ def issue_credential(
         "nullifier": str(nullifier),
         "nullifierHex": field_to_hex(nullifier),
         "issuerWallet": issuer_wallet_address,
+        "encScheme": encryption_scheme(holder_pubkey_hex),
     }

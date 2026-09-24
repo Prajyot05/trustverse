@@ -1,7 +1,8 @@
 "use client";
 
 import { AlertTriangle, Loader2, Search, ShieldCheck } from "lucide-react";
-import { useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   useServices,
   ALICE_CRED_HASH,
@@ -11,15 +12,43 @@ import {
 import { formatTimestamp } from "@/lib/format";
 import { DataField } from "@/components/data/data-field";
 import { HashChip } from "@/components/data/hash-chip";
+import { TechnicalDetails } from "@/components/data/technical-details";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
-export function PublicVerify() {
-  const { api, mode } = useServices();
+function PublicVerifyInner() {
+  const { api, product, mode } = useServices();
+  const searchParams = useSearchParams();
   const [hash, setHash] = useState("");
   const [isVerifying, setIsVerifying] = useState(false);
   const [result, setResult] = useState<PublicVerifyResult | null>(null);
+  const [shareNote, setShareNote] = useState<string | null>(null);
+
+  useEffect(() => {
+    const share = searchParams.get("share");
+    const qh = searchParams.get("hash");
+    if (qh) setHash(qh);
+    if (!share) return;
+    let cancelled = false;
+    product
+      .getShare(share)
+      .then((rec) => {
+        if (cancelled) return;
+        setShareNote(
+          rec.result === "pass"
+            ? `Share valid: ${rec.issuer_name || "issuer"} attested this holder.`
+            : rec.fail_reason || "Share could not be verified"
+        );
+        if (rec.credential_hash) setHash(rec.credential_hash);
+      })
+      .catch(() => {
+        if (!cancelled) setShareNote("This share link is invalid, expired, or revoked.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [searchParams, product]);
 
   const handleVerify = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -54,9 +83,16 @@ export function PublicVerify() {
           Verify a credential
         </h1>
         <p className="text-sm text-muted-foreground">
-          Paste a credential hash from the holder wallet.
+          Paste a credential hash, or open a share link from a holder.
         </p>
       </div>
+
+      {shareNote && (
+        <Alert className="mb-6 w-full" variant="success">
+          <AlertTitle>Share link</AlertTitle>
+          <AlertDescription>{shareNote}</AlertDescription>
+        </Alert>
+      )}
 
       <form
         onSubmit={handleVerify}
@@ -142,12 +178,12 @@ export function PublicVerify() {
                   label="Anchored timestamp"
                   value={formatTimestamp(result.data.anchoredAt)}
                 />
-                <DataField
-                  label="Poseidon commitment"
-                  value={
-                    <HashChip value={result.data.poseidonCommitment} copyable={false} />
-                  }
-                  className="sm:col-span-2"
+                <TechnicalDetails
+                  className="mt-4 sm:col-span-2"
+                  items={[
+                    { label: "Issuer DID", value: result.data.issuerDID },
+                    { label: "Commitment", value: result.data.poseidonCommitment },
+                  ]}
                 />
               </div>
             )}
@@ -155,5 +191,13 @@ export function PublicVerify() {
         </div>
       )}
     </div>
+  );
+}
+
+export function PublicVerify() {
+  return (
+    <Suspense fallback={<p className="p-12 text-center text-muted-foreground">Loading…</p>}>
+      <PublicVerifyInner />
+    </Suspense>
   );
 }

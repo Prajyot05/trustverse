@@ -37,6 +37,9 @@ export function SiteHeader() {
               {item.label}
             </Link>
           ))}
+          <Link href="/get-started" className="text-muted-foreground transition-colors hover:text-foreground">
+            Get started
+          </Link>
         </nav>
 
         <div className="ml-auto flex items-center gap-2">

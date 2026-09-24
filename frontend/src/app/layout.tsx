@@ -4,6 +4,7 @@ import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
+import { WalletHydrator } from "@/components/wallet/wallet-hydrator";
 
 const geistSans = Geist({
   subsets: ["latin"],
@@ -43,6 +44,7 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <TooltipProvider delayDuration={150}>
+            <WalletHydrator />
             {children}
             <Toaster position="bottom-right" />
           </TooltipProvider>

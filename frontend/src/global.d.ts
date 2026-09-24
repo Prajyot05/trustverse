@@ -5,6 +5,7 @@ interface Eip1193ProviderLike {
   on?: (event: string, handler: (...args: unknown[]) => void) => void;
   removeListener?: (event: string, handler: (...args: unknown[]) => void) => void;
   isMetaMask?: boolean;
+  _tvListenersAttached?: boolean;
 }
 
 interface Window {

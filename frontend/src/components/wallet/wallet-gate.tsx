@@ -25,7 +25,7 @@ export function WalletGate({
   suggestedRoles,
 }: WalletGateProps) {
   const { mode } = useServices();
-  const { connect, isConnecting, selectPersona } = useIdentity();
+  const { connect, isConnecting, selectPersona, connectEmbedded } = useIdentity();
 
   if (mode === "demo") {
     return (
@@ -69,8 +69,19 @@ export function WalletGate({
           ) : (
             <Wallet className="size-4" />
           )}
-          {isConnecting ? "Connecting…" : "Connect wallet"}
+          {isConnecting ? "Connecting…" : "Connect MetaMask"}
         </Button>
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full"
+          onClick={() => void connectEmbedded?.()}
+        >
+          Continue with a passkey wallet
+        </Button>
+        <p className="text-xs text-muted-foreground">
+          Passkey wallets stay on this device. Gas is sponsored. MetaMask is optional.
+        </p>
       </Card>
     </div>
   );

@@ -28,12 +28,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { PredicatePicker } from "@/components/predicates/predicate-picker";
+import { TechnicalDetails } from "@/components/data/technical-details";
+import { failReasonLabel, getPredicate } from "@/lib/predicates";
 import { Skeleton } from "@/components/ui/skeleton";
 
 function requestStatusKind(status: string): StatusKind {
   if (status === "fulfilled") return "fulfilled";
   if (status === "failed") return "failed";
   if (status === "pending") return "pending";
+  if (status === "expired") return "expired";
   return "neutral";
 }
 
@@ -47,7 +51,14 @@ function VerifierDashboardInner() {
 
   const [threshold, setThreshold] = useState("8.0");
   const [holderDid, setHolderDid] = useState("");
+  const [holderEmail, setHolderEmail] = useState("");
   const [issuerDid, setIssuerDid] = useState("");
+  const [predicateId, setPredicateId] = useState("cgpa_gte");
+  const [predicateParams, setPredicateParams] = useState<Record<string, string>>({
+    threshold: "8.0",
+  });
+  const [query, setQuery] = useState("");
+  const [forensicsHash, setForensicsHash] = useState("");
   const [isCreating, setIsCreating] = useState(false);
 
   const [history, setHistory] = useState<VerifyRequest[]>([]);
@@ -208,20 +219,27 @@ function VerifierDashboardInner() {
   const handleCreateRequest = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!did) return;
-    if (!holderDid.trim()) {
-      toast.error("Holder DID required", {
-        description: "Needed so the request appears in their wallet.",
+    if (!holderDid.trim() && !holderEmail.trim()) {
+      toast.error("Add an email or a DID", {
+        description: "The candidate needs a way to open this request.",
       });
       return;
     }
     setIsCreating(true);
     try {
+      const pred = getPredicate(predicateId);
+      const thresholdVal = parseFloat(predicateParams.threshold || threshold || "0");
       const created = await api.createRequest({
         verifier_did: did,
-        holder_did: holderDid.trim(),
+        holder_did: holderDid.trim() || undefined,
+        holder_email: holderEmail.trim() || undefined,
         issuer_did: issuerDid.trim() || undefined,
-        attribute: "cgpa",
-        threshold: parseFloat(threshold),
+        attribute: predicateId,
+        threshold: Number.isFinite(thresholdVal) ? thresholdVal : 0,
+        predicate: predicateId,
+        predicate_params: predicateParams,
+        template_label: pred.label,
+        expires_in_hours: 72,
       });
       toastedTerminalRef.current.delete(String(created.id));
       await loadHistory();
@@ -267,7 +285,7 @@ function VerifierDashboardInner() {
       setAnalysisResult(result);
       try {
         const ts = await api.computeTrustScore(
-          "0x0",
+          forensicsHash.trim() || "0x0",
           result.analysis.authenticity_score
         );
         setTrustScore(ts);
@@ -344,18 +362,36 @@ function VerifierDashboardInner() {
               </div>
               <form onSubmit={handleCreateRequest} className="flex flex-col gap-4">
                 <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="holder-did">Holder DID</Label>
+                  <Label htmlFor="holder-email">Candidate email</Label>
                   <p className="text-sm text-muted-foreground">
-                    Needed so the request appears in their wallet.
+                    Preferred — they get a link. DID is optional.
                   </p>
                   <Input
+                    id="holder-email"
+                    type="email"
+                    placeholder="candidate@email.com"
+                    value={holderEmail}
+                    onChange={(e) => setHolderEmail(e.target.value)}
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="holder-did">Holder DID (optional)</Label>
+                  <Input
                     id="holder-did"
-                    required
                     placeholder="did:ethr:0x..."
                     value={holderDid}
                     onChange={(e) => setHolderDid(e.target.value)}
                   />
                 </div>
+                <PredicatePicker
+                  value={predicateId}
+                  params={predicateParams}
+                  onChange={(id, params) => {
+                    setPredicateId(id);
+                    setPredicateParams(params);
+                    if (params.threshold) setThreshold(params.threshold);
+                  }}
+                />
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="issuer-did">Issuer DID (optional)</Label>
                   <Input
@@ -363,16 +399,6 @@ function VerifierDashboardInner() {
                     placeholder="did:ethr:0x..."
                     value={issuerDid}
                     onChange={(e) => setIssuerDid(e.target.value)}
-                  />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="threshold">CGPA ≥</Label>
-                  <Input
-                    id="threshold"
-                    type="number"
-                    step="0.01"
-                    value={threshold}
-                    onChange={(e) => setThreshold(e.target.value)}
                   />
                 </div>
                 <Button type="submit" size="lg" disabled={isCreating}>
@@ -417,17 +443,49 @@ function VerifierDashboardInner() {
                           />
                         </div>
                         <p className="mt-3 border-t border-border pt-3 text-foreground/80">
-                          No attribute values were disclosed — only that the threshold
-                          holds and the credential is not revoked.
+                          No attribute values were disclosed — only that the requested
+                          statement holds and the credential is not revoked.
                         </p>
+                        <TechnicalDetails
+                          className="mt-3"
+                          items={[
+                            { label: "Claim tx", value: selected.claim_tx_hash },
+                            { label: "Non-rev tx", value: selected.nonrev_tx_hash },
+                            { label: "Credential hash", value: selected.credential_hash },
+                          ]}
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="mt-3"
+                          onClick={() => {
+                            const report = {
+                              request: selected.id,
+                              result: selected.result,
+                              predicate: selected.predicate,
+                              block: selected.block_number,
+                              claim_tx: selected.claim_tx_hash,
+                              generated_at: new Date().toISOString(),
+                            };
+                            const blob = new Blob([JSON.stringify(report, null, 2)], {
+                              type: "application/json",
+                            });
+                            const a = document.createElement("a");
+                            a.href = URL.createObjectURL(blob);
+                            a.download = `trustverse-report-${selected.id}.json`;
+                            a.click();
+                          }}
+                        >
+                          Download report
+                        </Button>
                       </AlertDescription>
                     </Alert>
                   ) : isFailed ? (
                     <Alert variant="destructive" className="w-full text-left">
                       <AlertTitle>Not verified</AlertTitle>
                       <AlertDescription>
-                        The holder submitted a proof that did not meet the threshold
-                        or used a revoked credential.
+                        {failReasonLabel(selected.fail_reason)}
                       </AlertDescription>
                     </Alert>
                   ) : pollError ? (
@@ -469,6 +527,12 @@ function VerifierDashboardInner() {
             <h2 className="mb-3 font-heading text-lg font-semibold text-foreground">
               Request history
             </h2>
+            <Input
+              className="mb-3"
+              placeholder="Search by DID, email, or status"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
             {isLoadingHistory ? (
               <div className="flex flex-col gap-2">
                 <Skeleton className="h-16 w-full" />
@@ -481,7 +545,19 @@ function VerifierDashboardInner() {
               />
             ) : (
               <div className="flex flex-col gap-2">
-                {history.map((row) => {
+                {history
+                  .filter((row) => {
+                    const q = query.trim().toLowerCase();
+                    if (!q) return true;
+                    return (
+                      String(row.id).includes(q) ||
+                      (row.holder_did || "").toLowerCase().includes(q) ||
+                      (row.holder_email || "").toLowerCase().includes(q) ||
+                      (row.status || "").toLowerCase().includes(q) ||
+                      (row.template_label || "").toLowerCase().includes(q)
+                    );
+                  })
+                  .map((row) => {
                   const active = String(row.id) === selectedId;
                   return (
                     <button
@@ -501,10 +577,10 @@ function VerifierDashboardInner() {
                     >
                       <div className="min-w-0">
                         <p className="text-sm font-medium text-foreground">
-                          Request #{row.id} · CGPA ≥ {row.threshold_display}
+                          Request #{row.id} · {row.template_label || `CGPA ≥ ${row.threshold_display}`}
                         </p>
                         <p className="truncate text-sm text-muted-foreground">
-                          Holder: {row.holder_did || "—"}
+                          {row.holder_email || row.holder_did || "—"}
                         </p>
                       </div>
                       <StatusBadge status={requestStatusKind(row.status)} />
@@ -556,6 +632,15 @@ function VerifierDashboardInner() {
                     {mode === "demo" ? " (simulated)" : ""}
                   </p>
                 </label>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="forensics-hash">Link to a credential hash (optional)</Label>
+                  <Input
+                    id="forensics-hash"
+                    placeholder="0x…"
+                    value={forensicsHash}
+                    onChange={(e) => setForensicsHash(e.target.value)}
+                  />
+                </div>
                 {selectedFile && !analysisResult && (
                   <Button type="button" onClick={runAIForensics} disabled={isAnalyzing}>
                     {isAnalyzing && <Loader2 className="size-4 animate-spin" />}
@@ -626,6 +711,9 @@ function VerifierDashboardInner() {
                         )}
                       </div>
                     )}
+                    <p className="text-sm text-muted-foreground">
+                      Paper scans are a fallback. Invite the holder to claim a digital credential so future checks stay cryptographic.
+                    </p>
                   </div>
                 ) : (
                   <EmptyState

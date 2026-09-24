@@ -17,6 +17,10 @@ class EventType(str, enum.Enum):
     VERIFICATION_COMPLETED = "VerificationCompleted"
     ISSUER_REGISTERED = "IssuerRegistered"
     ISSUER_SUSPENDED = "IssuerSuspended"
+    SHARE_CREATED = "ShareCreated"
+    CLAIM_INVITED = "ClaimInvited"
+    ISSUER_VERIFIED = "IssuerVerified"
+    PRESENTATION_CREATED = "PresentationCreated"
 
 class TrustEvent(Base):
     __tablename__ = "trust_events"
@@ -38,6 +42,9 @@ class Issuer(Base):
     is_active = Column(Boolean, default=True)
     metadata_json = Column(JSON)
     registered_at = Column(DateTime, default=datetime.utcnow)
+    domain = Column(String)
+    verified = Column(Boolean, default=False)
+    accreditation = Column(String)
 
 class CredentialRecord(Base):
     """
@@ -60,7 +67,13 @@ class CredentialRecord(Base):
     claims_hash = Column(String)
     salt = Column(String)
     nullifier = Column(String)
-    
+    holder_email = Column(String, index=True)
+    claim_token = Column(String, index=True)
+    claimed_at = Column(DateTime)
+    template_id = Column(String)
+    enc_scheme = Column(String, default="demo-did-aes")
+    holder_pubkey = Column(String)
+
     issuer = relationship("Issuer")
 
 
@@ -80,6 +93,14 @@ class VerificationRequest(Base):
     block_number = Column(Integer)
     result = Column(String)  # pass / fail
     created_at = Column(DateTime, default=datetime.utcnow)
+    holder_email = Column(String, index=True)
+    holder_name = Column(String)
+    expires_at = Column(DateTime)
+    predicate = Column(String, default="cgpa_gte")
+    predicate_params = Column(JSON)
+    invite_token = Column(String, index=True)
+    fail_reason = Column(String)
+    template_label = Column(String)
 
 
 class MerkleMeta(Base):
@@ -90,3 +111,88 @@ class MerkleMeta(Base):
     root = Column(String, nullable=False, default="0")
     depth = Column(Integer, default=20)
     occupied_leaves = Column(JSON, default=dict)  # {position_str: "1"}
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id = Column(Integer, primary_key=True, index=True)
+    recipient_did = Column(String, index=True, nullable=False)
+    title = Column(String, nullable=False)
+    body = Column(String)
+    kind = Column(String, index=True)
+    href = Column(String)
+    read = Column(Boolean, default=False)
+    email_to = Column(String)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ShareLink(Base):
+    __tablename__ = "share_links"
+
+    token = Column(String, primary_key=True)
+    holder_did = Column(String, index=True, nullable=False)
+    credential_hash = Column(String, index=True)
+    predicate = Column(String, default="cgpa_gte")
+    predicate_params = Column(JSON)
+    expires_at = Column(DateTime)
+    revoked = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    label = Column(String)
+
+
+class CredentialTemplate(Base):
+    __tablename__ = "credential_templates"
+
+    id = Column(String, primary_key=True)
+    issuer_did = Column(String, index=True, nullable=False)
+    name = Column(String, nullable=False)
+    schema_id = Column(String, default="degree-v1")
+    fields_json = Column(JSON)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class StaffMember(Base):
+    __tablename__ = "staff_members"
+
+    id = Column(Integer, primary_key=True, index=True)
+    issuer_did = Column(String, index=True, nullable=False)
+    member_did = Column(String, index=True, nullable=False)
+    role = Column(String, default="viewer")  # admin, registrar, viewer
+    email = Column(String)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ApiKey(Base):
+    __tablename__ = "api_keys"
+
+    id = Column(Integer, primary_key=True, index=True)
+    owner_did = Column(String, index=True, nullable=False)
+    name = Column(String, nullable=False)
+    prefix = Column(String, nullable=False)
+    hashed_key = Column(String, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    last_used_at = Column(DateTime)
+
+
+class Webhook(Base):
+    __tablename__ = "webhooks"
+
+    id = Column(Integer, primary_key=True, index=True)
+    owner_did = Column(String, index=True, nullable=False)
+    url = Column(String, nullable=False)
+    events = Column(JSON)
+    secret = Column(String)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Presentation(Base):
+    __tablename__ = "presentations"
+
+    id = Column(String, primary_key=True)
+    holder_did = Column(String, index=True, nullable=False)
+    verifier_did = Column(String)
+    credential_hash = Column(String)
+    request_id = Column(Integer)
+    payload = Column(JSON)
+    created_at = Column(DateTime, default=datetime.utcnow)

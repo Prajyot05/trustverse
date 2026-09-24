@@ -9,6 +9,9 @@ import { useServices } from "@/services";
 import { Logo } from "@/components/brand/logo";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { WalletMenu } from "@/components/layout/wallet-menu";
+import { ModeChip } from "@/components/layout/mode-chip";
+import { InboxBell } from "@/components/layout/inbox-bell";
+import { NetworkBanner } from "@/components/layout/network-banner";
 import {
   getAppNavItems,
   getOverviewNavItem,
@@ -85,6 +88,7 @@ function currentSectionLabel(pathname: string, basePath: "" | "/demo") {
     [`${basePath}/wallet`]: "Holder Wallet",
     [`${basePath}/verifier`]: "Verifier",
     [`${basePath}/verify`]: "Public Verify",
+    [`${basePath}/directory`]: "Issuer directory",
   };
   const match = Object.keys(labels)
     .filter((href) => href !== "/" && href !== "/demo" && pathname.startsWith(href))
@@ -106,6 +110,7 @@ export function AppShell({ children, banner }: AppShellProps) {
   return (
     <div className="flex min-h-screen flex-col bg-background">
       {banner}
+      <NetworkBanner />
       <div className="flex min-h-0 flex-1">
         <aside className="hidden w-60 shrink-0 flex-col border-r border-border md:flex">
           <div className="flex h-16 items-center border-b border-border px-5">
@@ -154,11 +159,13 @@ export function AppShell({ children, banner }: AppShellProps) {
               <Logo showWordmark={false} />
             </div>
 
-            <p className="hidden text-sm font-medium text-foreground md:block">
+            <p className="hidden items-center gap-2 text-sm font-medium text-foreground md:flex">
               {currentSectionLabel(pathname, basePath)}
+              <ModeChip />
             </p>
 
             <div className="ml-auto flex items-center gap-2">
+              <InboxBell />
               <ThemeToggle />
               <WalletMenu />
             </div>
