@@ -26,11 +26,15 @@ Blockcerts, Hyperledger Aries/AnonCreds, EBSI, and recent zk-credential systems 
 
 **Forensics:** ELA preprocessing + small CNN; TrustVerse Score fuses anchor, issuer, revocation, and CNN signals.
 
+**Product layer (not part of the ZK claim):** inbox notifications, an issuer directory, share links, templates, staff records, batch issuance, and a backend relay anchor. Of the predicate catalog, only `cgpa_gte` is proved with ClaimProver. `degree_eq`, `year_range`, `graduated`, and `issuer_set` are evaluated in the API after decryption. Share-link results use that server check. The directory "verified" flag is set by an API call and is not a DNS or `did:web` proof. API keys and webhooks are stored; they are not enforced or delivered.
+
 See `docs/architecture.md` for the sequence diagram aligned with the implementation.
 
 ## 4. Security and Privacy Analysis
 
-The verifier learns only that a proof passed (threshold met, issuer registered, credential anchored, not revoked at the submitted root). Attribute values and full credentials remain hidden. Stale revocation roots are rejected by the gateway. Demo encryption uses a deterministic per-DID key (documented limitation vs ECIES).
+On the Groth16 path, the verifier learns only that a proof passed (threshold met, credential anchored, not revoked at the submitted root). Attribute values stay out of the public inputs. Stale revocation roots are rejected by the gateway. Share links and the non-`cgpa_gte` predicates do not have this property: the server decrypts the credential to evaluate them.
+
+Demo encryption is `SHA256("trustverse-demo-key:" + holder DID)` unless a holder public key was stored at issuance, in which case the key is `SHA256("trustverse-ecies:" + pubkey hex)`. The second form is a KDF over the public key, not ECIES; anyone who can read that column can decrypt.
 
 ## 5. Evaluation
 
@@ -51,7 +55,9 @@ Fill tables from generated JSON before submission.
 
 - **Visual binding (R1):** Original DCT-SDC achieved 100% FAR on tampered certificates. Region-hash spike results are in `eval/out/r1_gate.json`; integration is gated on FAR < 10% at FRR < 5%.
 - **Trusted setup:** Local Groth16 ceremony only; production requires a proper MPC.
-- **Holder encryption:** ECIES from wallet public key is future work.
+- **Holder encryption:** binding the AES key to a stored public key is not ECIES. Future work is encryption under the holder secret key.
+- **Predicates other than `cgpa_gte`:** server-side checks. Wiring them into a circuit, and routing IssuerMembership through the gateway, is future work.
+- **Directory verification, API keys, webhooks:** records only. Domain control, key enforcement, and webhook delivery are future work.
 
 ## 7. Conclusion
 

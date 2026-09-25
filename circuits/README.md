@@ -18,6 +18,8 @@ circuits agree bit-for-bit), and `circuits/scripts/prove_fixture.js`.
 | `NonRevocation` | `credentialRoot`, `revocationTreeRoot` | This credential's nullifier is *absent* from the revocation tree (20 levels, ~1M credentials) |
 | `IssuerMembership` | `credentialRoot`, `issuerRegistryRoot` | `issuerPubKey` is present in an issuer registry tree (10 levels, ~1k issuers) |
 
+The product predicate catalog (`cgpa_gte`, `degree_eq`, `year_range`, `graduated`, `issuer_set`) is not five circuits. Only `cgpa_gte` is ClaimProver. The other four are evaluated in `backend/app/core/predicates.py`. IssuerMembership is compiled and deployed; `VerificationGateway` does not call it.
+
 `VisualBinder.circom` (the fourth circuit from the `zk-cavb` spike) is **not**
 part of this set. It lives in `research/sdc-spike/` because
 `research/sdc-spike/evaluate_sdc.py` shows its underlying feature extractor

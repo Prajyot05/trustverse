@@ -71,12 +71,19 @@ Config: [`components.json`](components.json). Aliases: `@/components`, `@/compon
 | Path | Shell | Purpose |
 |---|---|---|
 | `/` | Marketing (`SiteHeader` + `SiteFooter`) | Product landing |
-| `/issuer` | App shell | Register issuer, issue & revoke credentials |
-| `/wallet` | App shell | Holder credentials + ZK proof responses |
-| `/verifier` | App shell | ZK requests + AI forensics |
+| `/get-started` | Marketing | Role picker into the matching portal |
+| `/issuer` | App shell | Register, issue, anchor, revoke, templates, batch, staff, keys, webhook URL |
+| `/wallet` | App shell | Holder credentials, inbox, ZK proofs, share links |
+| `/verifier` | App shell | Predicate requests + AI forensics |
 | `/verify` | App shell | Public credential hash lookup |
+| `/directory` | App shell | Issuer directory (domain, accreditation, verified flag) |
+| `/present` | App shell | QR for a 24-hour `graduated` share |
+| `/embed/verify` | Widget | `?hash=` public lookup or `?share=` server-side predicate result |
+| `/demo/*` | Demo shell | Same portals backed by the in-browser demo store |
 
-Route groups: `src/app/(marketing)/` and `src/app/(app)/` — URLs unchanged.
+Route groups: `src/app/(marketing)/`, `src/app/(app)/`, and `src/app/(widget)/`. Demo routes live under `src/app/demo/`.
+
+Only `cgpa_gte` is a Groth16 proof. Other predicates and share-link results are server-side checks. See `docs/architecture.md`.
 
 ## Scripts
 

@@ -36,6 +36,7 @@ Three actors. Each has a dedicated UI page and corresponding API surface.
 - Backend builds a W3C VC, computes a Poseidon `credentialRoot`, encrypts the VC for the holder, and stores it.
 - Issuer’s wallet signs `CredentialAnchor.anchorCredential` so the commitment is on-chain.
 - Can revoke a credential (updates the backend Merkle revocation tree and publishes the new root).
+- Can batch-issue, ask the backend to relay an anchor, manage templates and staff, and store an API key or webhook URL. Keys are not enforced and webhook URLs are not called.
 
 **UI:** `/issuer`
 
@@ -45,18 +46,21 @@ Three actors. Each has a dedicated UI page and corresponding API surface.
 - Fetches and decrypts credentials; sees attributes, anchor status, and revocation status.
 - Receives verification requests (list or QR deep link `/wallet?request=<id>`).
 - Generates Groth16 proofs in the browser (`ClaimProver` + `NonRevocation`) and submits them to `VerificationGateway` via MetaMask.
+- Can create a share link. Resolving that link is a server-side predicate check, not a Groth16 proof.
 
-**UI:** `/wallet`
+**UI:** `/wallet`, `/present`
 
 ### Verifier (employer / admissions)
 
-- Creates a request: attribute + threshold (e.g. CGPA ≥ 8.0) + optional issuer DID.
+- Creates a request: predicate (default `cgpa_gte`) + threshold (e.g. CGPA ≥ 8.0) + optional issuer DID. The request expires (default 72 hours) and carries an invite token.
 - Shares a deep link / QR with the student.
 - Polls until the request is fulfilled; sees **pass/fail**, issuer context, and block/tx reference — **not** the CGPA value or other attributes.
 - Optionally uploads a scanned certificate image for ELA heatmap + CNN authenticity + TrustVerse Score.
 
 **UI:** `/verifier`  
-**Public lookup (anyone):** `/verify` — paste a credential hash for on-chain anchor + boolean revocation status.
+**Public lookup (anyone):** `/verify` — paste a credential hash for on-chain anchor + boolean revocation status.  
+**Directory:** `/directory` — issuer name, domain, accreditation, and the verified flag.  
+**Embed:** `/embed/verify`.
 
 ---
 
@@ -120,7 +124,7 @@ flowchart TB
 | Path | Purpose |
 |------|---------|
 | `frontend/` | Issuer, wallet, verifier, and public verify portals |
-| `backend/` | Issuance, encryption, revocation tree, forensics, demo seed |
+| `backend/` | Issuance, encryption, revocation tree, forensics, product layer, demo seed |
 | `backend/poseidon_sidecar/` | Node + circomlibjs Poseidon (must match Circom bit-for-bit) |
 | `backend/models/` | Trained `forgery_cnn.pt` weights |
 | `contracts/` | Smart contracts, Hardhat tests, deploy + gas scripts |
@@ -247,6 +251,8 @@ Signing of the VC itself is wallet/anchor-driven in the demo; there is no `issue
 3. Holder generates and submits proofs (above).
 4. Verifier polls `GET /api/v1/verify/requests/{id}` (~3s) until `fulfilled` / `failed`.
 5. UI emphasizes that **no attribute values were disclosed** — only the boolean outcome and public metadata (issuer, block/tx).
+
+Requests carry a predicate id (`cgpa_gte` by default), optional `predicate_params`, an expiry (default 72 hours), and an invite token. `GET /api/v1/verify/invite/{token}` resolves the invite. Pending requests past `expires_at` serialize as `expired`. Issuance, revocation, and proof indexing also write an inbox notification for the holder or verifier (`backend/app/core/notify.py`). Email is sent only when `SMTP_HOST` is set; otherwise the notice is stored and logged.
 
 ### 6.5 Revocation
 
@@ -417,7 +423,55 @@ All product routes are under **`/api/v1`**. OpenAPI docs: `http://localhost:8000
 |--------|------|---------|
 | POST | `/api/v1/demo/seed` | Seed university, Alice, Bob, pending request |
 
-`GET /` returns a welcome JSON payload.
+`GET /` returns a welcome JSON payload. `GET /health` returns `{"status":"ok"}`.
+
+On startup, `Base.metadata.create_all` creates new tables and `ensure_columns()` in `backend/app/db/migrate.py` adds missing columns to an existing SQLite file. That migration is additive (`ALTER TABLE ... ADD COLUMN` only).
+
+Issuer registration accepts optional `domain` and `accreditation`. Profile responses include those fields plus `verified`, and `GET /api/v1/issuers/{did}` counts issued, revoked, and verification rows instead of returning zeros.
+
+Credential issue accepts optional `holder_email`, `holder_pubkey`, `template_id`, and `claim_invite` (default true). A claim token is stored when `claim_invite` is true. Holder and issuer list payloads include `holder_email`, `claim_token`, `claimed_at`, and `enc_scheme`.
+
+### Product layer (`/api/v1/product`)
+
+These routes sit beside the ZK path. They are implemented in `backend/app/api/endpoints/product.py`. The issuer portal, holder wallet, directory, and present page call the ones marked **UI**. The rest are API-only.
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/api/v1/product/predicates` | Predicate catalog (labels, disclosed fields, circuit name) |
+| GET | `/api/v1/product/notifications?did=` | Inbox for one DID, newest 50. **UI** (header bell) |
+| POST | `/api/v1/product/notifications/{id}/read` | Mark one notification read. **UI** |
+| GET | `/api/v1/product/events` | Trust events, filter by `actor_did` or `target_did` |
+| POST | `/api/v1/product/shares` | Create a time-limited share link. **UI** (wallet and `/present`) |
+| GET | `/api/v1/product/shares?holder_did=` | List a holder's shares |
+| GET | `/api/v1/product/shares/{token}` | Resolve a share. See the caveat below |
+| POST | `/api/v1/product/shares/{token}/revoke` | Revoke a share |
+| GET | `/api/v1/product/templates?issuer_did=` | List templates; creates a default degree template if empty. **UI** |
+| POST | `/api/v1/product/templates` | Create or update a template. **UI** |
+| GET | `/api/v1/product/directory` | Active issuers with domain, accreditation, issued count. **UI** (`/directory`) |
+| POST | `/api/v1/product/directory/verify` | Sets `domain`, `verified=true`, and optional accreditation. Does **not** check DNS or `did:web` |
+| POST | `/api/v1/product/presentations` | Store a W3C Verifiable Presentation payload |
+| GET | `/api/v1/product/presentations/{id}` | Fetch one presentation |
+| GET | `/api/v1/product/analytics?did=&role=` | Counts for issuer, verifier, or holder |
+| GET/POST | `/api/v1/product/staff` | List or add issuer staff (`admin`, `registrar`, `viewer`). **UI** |
+| GET/POST | `/api/v1/product/webhooks` | Store a webhook URL, event list, and secret. **UI** stores them; nothing in the API delivers events to the URL |
+| GET/POST | `/api/v1/product/keys` | Store a SHA-256 hash of an API key and return the raw key once. **UI** creates keys; routes do not require them |
+| POST | `/api/v1/product/credentials/batch` | Issue many credentials (optional `did:email:` holder). **UI**. Records stay `Issued` until anchored |
+| POST | `/api/v1/product/relay/anchor` | Backend wallet calls `anchor_on_chain` (sponsored anchor). **UI** |
+| GET | `/api/v1/product/health` | Feature list for this router |
+
+**Share resolution is not a ZK proof.** `GET /shares/{token}` decrypts the credential on the server and runs `evaluate_predicate()`. The JSON reports pass/fail and does not include raw attributes, but the server saw them. The cryptographic selective-disclosure path is still ClaimProver plus NonRevocation on `VerificationGateway`.
+
+**Predicate catalog** (`backend/app/core/predicates.py`):
+
+| Id | What it checks | Where pass/fail is decided |
+|----|----------------|----------------------------|
+| `cgpa_gte` | `cgpaScaled >= threshold` | Groth16 ClaimProver, then the gateway |
+| `degree_eq` | Degree title string equality | Server, against decrypted subject |
+| `year_range` | Issue year inside `[from_year, to_year]` | Server |
+| `graduated` | Credential status is active or issued | Server (NonRevocation is a separate proof the holder may still submit) |
+| `issuer_set` | Issuer DID is in a comma-separated allow-list | Server. The IssuerMembership circuit is not on this path |
+
+`/present` creates a 24-hour share for the holder's first credential with predicate `graduated` and shows a QR to `/verify?share=...`. `/embed/verify` accepts `?hash=` (on-chain public lookup) or `?share=` (the server-side share check).
 
 ---
 
@@ -466,11 +520,14 @@ The verifier UI shows components explicitly next to the upload. Scan uploads wit
 
 | Topic | Current behavior | Production intent |
 |-------|------------------|-------------------|
-| Holder encryption | AES key = `SHA256("trustverse-demo-key:" + holder_did)` — deterministic; anyone who knows the DID can derive it | ECIES / wallet encryption from holder pubkey |
+| Holder encryption | If `holder_pubkey` is stored: AES key = `SHA256("trustverse-ecies:" + pubkey hex)`. That is a key derivation from the public key, not ECIES; anyone who can read the pubkey column can decrypt. Otherwise the legacy demo key `SHA256("trustverse-demo-key:" + holder_did)` | Real ECIES so only the holder secret key opens the credential |
 | Issuer binding in-circuit | `issuerPubKey` = Ethereum address as int | Dedicated circuit-friendly issuer key + signature |
 | Groth16 setup | Local reproducible ceremony | Proper multi-party ceremony |
 | IPFS | Mock CID when Pinata keys unset | Real pinning |
-| Auth | Wallet-based role detection only | Enough for thesis/demo; no SIWE/JWT required by design |
+| Auth | Wallet-based role detection only. API keys are stored and shown once; no route checks them | Enough for thesis/demo; no SIWE/JWT required by design |
+| Issuer "verified" flag | `POST /api/v1/product/directory/verify` sets `verified=true` for a domain string. No DNS or `did:web` proof | Domain-control check before the flag flips |
+| Share links | Server decrypts and evaluates the predicate | Same statement as a Groth16 proof, or stop calling the share result a proof |
+| Webhooks | URL and secret are stored | Delivery on trust events |
 
 Unlinkability is limited by demo choices (stable DIDs, deterministic encryption). Fresh salts per credential do prevent trivial reuse of the same Poseidon root across issuances.
 
@@ -483,6 +540,9 @@ Unlinkability is limited by demo choices (stable DIDs, deterministic encryption)
 | ClaimProver + NonRevocation + gateway | **Product** |
 | Backend SMT revocation + root publish | **Product** |
 | Issuer registration / anchor / revoke UI | **Product** |
+| Inbox, directory, templates, staff, batch issue, relay anchor | **Product** (off-chain). Relay anchor uses the backend wallet |
+| Share links and `degree_eq` / `year_range` / `graduated` / `issuer_set` | **Product UI, not ZK.** Pass/fail is `evaluate_predicate()` on the server |
+| API keys and webhooks | **Stored only.** Keys are not enforced; webhook URLs are not called |
 | ELA-CNN forensics | **Product (secondary)** |
 | IssuerMembership in gateway | Deployed verifier only; not MVP-wired |
 | VisualBinder / DCT-SDC | **Research** — 0% FRR, **100% FAR** on synthetic tampers |
@@ -500,7 +560,7 @@ Cold demos should need zero manual data entry.
 
 | Entity | Detail |
 |--------|--------|
-| University | `did:ethr:trustverse-university`, Hardhat account #0 |
+| University | `did:ethr:trustverse-university`, Hardhat account #0, domain `trustverse.university`, accreditation `NAAC A++`, `verified=true` |
 | Alice (holder) | Hardhat #1 — CGPA **8.9**, Active, anchored |
 | Bob (holder) | Hardhat #2 — CGPA **6.4**, **Revoked** (SMT leaf set) |
 | Pending request | Hardhat #3 as verifier → Alice, `cgpa` ≥ **8.0** (`threshold = 800`) |
@@ -538,10 +598,15 @@ Ctrl-C tears down Hardhat, API, and frontend. Logs: `.hardhat-node.log`, `.backe
 | Route | Audience | Job |
 |-------|----------|-----|
 | `/` | Everyone | Product narrative + guided demo |
-| `/issuer` | University | Register, issue, MetaMask anchor, revoke |
-| `/wallet` | Student | Decrypt credentials, answer proof requests |
-| `/verifier` | Employer | Create requests, poll results, optional scan upload |
+| `/get-started` | Everyone | Role picker (holder, issuer, verifier) into the matching portal |
+| `/issuer` | University | Register, issue, MetaMask or relay anchor, revoke, templates, batch issue, staff, API keys, webhook URL |
+| `/wallet` | Student | Decrypt credentials, inbox-driven requests, answer proofs, create a share |
+| `/verifier` | Employer | Predicate picker, create requests, poll results, optional scan upload |
 | `/verify` | Public | Anchor + revocation lookup by credential hash |
+| `/directory` | Public | Issuer list with domain, accreditation, and the verified flag |
+| `/present` | Holder | QR for a 24-hour `graduated` share of the first credential |
+| `/embed/verify` | Embed | `?hash=` public lookup or `?share=` server-side predicate result |
+| `/demo/...` | Guided demo | Same portals under the demo service (`/demo/issuer`, `/demo/wallet`, `/demo/verifier`, `/demo/verify`, `/demo/directory`, `/demo/present`) |
 
 Contract ABIs/addresses and `API_URL` are centralized in `frontend/src/lib/contracts.ts`.
 
@@ -554,5 +619,6 @@ Contract ABIs/addresses and `API_URL` are centralized in `frontend/src/lib/contr
 3. **Revocation freshness is enforced** — stale Merkle roots are rejected at the gateway.
 4. **Forensics is fallback, not the spine** — a student CNN will not beat large pretrained forensics models; it supports legacy documents and a second evaluation table.
 5. **Honest research boundaries** — failed visual binding is documented as a negative result, not papered over.
+6. **Predicate names are not proofs** — only `cgpa_gte` is ClaimProver. Directory "verified", share pass/fail, API keys, and webhooks are product records with the limits in §11.
 
 If you are implementing a change, ask: does it touch the commitment layout, the tree depth, or public signal order? Those three are the most expensive to get wrong.

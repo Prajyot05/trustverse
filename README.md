@@ -11,6 +11,9 @@ Privacy-preserving academic credential verification using **W3C Verifiable Crede
 - Revocation Merkle tree (backend) with root published to the gateway; issuer revoke UI
 - Guided demo mode (`POST /api/v1/demo/seed`) with seeded university, students, revoked credential, pending request
 - ELA heatmap + CNN score on verifier scan upload (train weights with included notebook)
+- Product layer on `/api/v1/product`: inbox, issuer directory, share links, templates, staff, batch issue, and relay anchor. See [docs/architecture.md](docs/architecture.md) for what is a Groth16 proof and what is a server-side check
+
+`degree_eq`, `year_range`, `graduated`, and `issuer_set` are evaluated in `backend/app/core/predicates.py` after the server decrypts the credential. Only `cgpa_gte` is a ClaimProver proof. Share links (`/present`, `/embed/verify?share=`) use that server check. `POST /api/v1/product/directory/verify` sets a verified flag; it does not prove DNS or `did:web` control. API keys and webhooks are stored; keys are not required on routes, and webhook URLs are not called.
 
 ## What is research-only
 
@@ -96,7 +99,7 @@ curl -X POST http://localhost:8000/api/v1/demo/seed
 
 This creates:
 
-- **TrustVerse University** (`did:ethr:trustverse-university`) registered on-chain (account #0).
+- **TrustVerse University** (`did:ethr:trustverse-university`) registered on-chain (account #0), domain `trustverse.university`, accreditation `NAAC A++`, verified flag set.
 - **Alice** — CGPA **8.9**, status **Active**, credential anchored.
 - **Bob** — CGPA **6.4**, status **Revoked** (Merkle leaf set + root published).
 - One **pending** verification request: verifier (#3) asks Alice for **CGPA ≥ 8.0**.
@@ -172,6 +175,15 @@ This path is **secondary** to ZK verification — it is for paper/legacy scans, 
 2. Paste a `credentialHash` from Alice’s wallet or the issuer list (SHA-256 hash of the VC, not the Poseidon root).
 3. Confirm anchor status and revocation flag from chain/API.
 
+### 8b. Directory, present, and inbox
+
+These sit on the product API. They do not replace the ZK path in steps 3–4.
+
+1. [http://localhost:3000/directory](http://localhost:3000/directory) lists issuers. The seeded university shows domain `trustverse.university` and accreditation `NAAC A++`.
+2. As Alice (`#1`), open [http://localhost:3000/present](http://localhost:3000/present). The page creates a 24-hour share for the first credential with predicate `graduated` and shows a QR. Opening that link runs the **server-side** predicate check, not ClaimProver.
+3. The header inbox lists notifications for the connected DID (credential issued, revoked, proof requested, proof submitted). Demo mode filters by recipient. Email is not sent unless `SMTP_HOST` is set.
+4. [http://localhost:3000/get-started](http://localhost:3000/get-started) picks a role and routes into the matching portal. `/embed/verify?hash=` is the public lookup; `/embed/verify?share=` is the share check.
+
 ### 9. Suggested 5-minute examiner script
 
 | Minute | Action |
@@ -198,8 +210,8 @@ This path is **secondary** to ZK verification — it is for paper/legacy scans, 
 
 | Path | Purpose |
 |------|---------|
-| `frontend/` | Next.js — issuer, wallet, verifier portals |
-| `backend/` | FastAPI — issuance, revocation tree, forensics, demo seed |
+| `frontend/` | Next.js — issuer, wallet, verifier, directory, present, embed |
+| `backend/` | FastAPI — issuance, revocation tree, forensics, product layer, demo seed |
 | `contracts/` | Hardhat — registry, anchor, revocation, gateway, Groth16 verifiers |
 | `circuits/` | ClaimProver, NonRevocation, IssuerMembership (+ fixtures) |
 | `eval/` | Reproducible evaluation scripts |
